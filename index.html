@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Email Typo Checker</title>
+</head>
+<body>
+  <h2>防御的ドメイン提示</h2>
+  <input type="text" id="emailInput" placeholder="例: gmail.com" />
+  <button onclick="showTypos()">タイポ候補を表示</button>
+
+  <h3>タイポドメイン候補一覧</h3>
+  <ul id="typoList"></ul>
+
+  <script>
+    function extractDomain(email) {
+      return email.split('@')[1] || '';
+    }
+
+    function generateTypos(domain) {
+      if (!domain) return [];
+      let typos = [];
+      if (domain === "gmail.com") {
+        typos = ["gamil.com", "gmial.com", "gmail.co"];
+      } else if (domain === "yahoo.co.jp") {
+        typos = ["yaho.co.jp", "yao.co.jp", "yahoo.jp"];
+      }
+      return typos;
+    }
+
+    function showTypos() {
+      const email = document.getElementById("emailInput").value;
+      const domain = extractDomain(email);
+      const typos = generateTypos(domain);
+
+      const list = document.getElementById("typoList");
+      list.innerHTML = "";
+      typos.forEach(t => {
+        const li = document.createElement("li");
+        li.textContent = email.replace(domain, t);
+        list.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
+
+gmail.co
+...
+
