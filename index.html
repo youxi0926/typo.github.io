@@ -10,27 +10,33 @@
     </style>
 </head>
 <body>
-    <h2>防御的ドメイン提示</h2>
-    <input type="text" id="domainInput" placeholder="ドメインを入力 (例: treasurefactory.co.jp)" />
+    <h2>防御的ドメイン生成サイト</h2>
+    <input type="text" id="domainInput" placeholder="ドメインを入力 (例: gmail.com)" />
     <button onclick="showTypos()">タイポ候補を表示</button>
 
     <h3>タイポドメイン候補一覧</h3>
     <ul id="typoList"></ul>
 
     <script>
-        // ====================================================================
-        // 1. PythonロジックのJavaScript移植 (簡易版)
-        // ====================================================================
-
-        // ★ あなたの分析結果から得られた静的重みとデータ構造を直接使用 ★
         const MAJOR_WEIGHTS = {
             "隣接キー誤打": 0.264, "二重入力": 0.240, "入力漏れ": 0.219,
             "スペルミス（認知ミス）": 0.200, "ホモグリフ（視覚類似文字）": 0.031,
             "ドット抜け": 0.026, "入力順序ミス": 0.020, "左右対称キー誤打": 0.001
         };
 
-        const KEYBOARD_ADJACENT = { /* Pythonのkeyboard_adjacentをJSオブジェクトに変換 */ };
-        // ... (他の定数もここに配置) ...
+        const KEYBOARD_ADJACENT = { 
+            'q': 'wa', 'w': 'qase', 'e': 'wsdr', 'r': 'edft', 't': 'rfgy',
+            'y': 'tghu', 'u': 'yhji', 'i': 'ujko', 'o': 'iklp', 'p': 'ol',
+            'a': 'qws', 's': 'qwedazx', 'd': 'erfcsx', 'f': 'rtdgvcj',
+            'g': 'tyfhvbn', 'h': 'yugjnb', 'j': 'uikhmnf', 'k': 'ijolm', 'l': 'okp',
+            'z': 'asx', 'x': 'zsdc', 'c': 'xdfv', 'v': 'cfgb', 'b': 'vghn', 'n': 'bhjm', 'm': 'njk,',
+            '.': ',/', ',': 'm.',
+            '-': '^' 
+        };
+
+symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] 
+homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')] 
+
 
         function levenshteinDistance(s1, s2) {
             // JavaScript用のシンプルなレーベンシュタイン距離計算（DL距離ではない）
