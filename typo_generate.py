@@ -6,6 +6,7 @@ import pandas as pd
 from difflib import SequenceMatcher
 import difflib
 from collections import defaultdict, Counter
+import json
 
 # ====================================================================-
 # --------タイポドメイン抽出----------
@@ -75,7 +76,7 @@ keyboard_adjacent = { # キーボード隣接キーマップ
     'g': 'tyfhvbn', 'h': 'yugjnb', 'j': 'uikhmnf', 'k': 'ijolm', 'l': 'okp',
     'z': 'asx', 'x': 'zsdc', 'c': 'xdfv', 'v': 'cfgb', 'b': 'vghn', 'n': 'bhjm', 'm': 'njk,',
     '.': ',/', ',': 'm.',
-    '-': '^' #NEW
+    '-': '^'
 }
 
 symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称配置キー誤打（例: f ↔ j）
@@ -495,3 +496,14 @@ if __name__ == "__main__":
             print(f"{i+1}位 {r['typo']:<30} (スコア: {r['score']:.3f}, 距離: {r['distance']}, 原因: {r['causes']})")
     else:
         print("\n[エラー] typo_weights が計算されていないため、ランキング生成を実行できませんでした。")
+
+
+data_to_export = {
+    "major_weights": MAJOR_WEIGHTS,
+    "keyboard_adjacent": keyboard_adjacent,
+    "symmetric_key_pairs": symmetric_key_pairs,
+    # ... 他の辞書 ...
+}
+
+with open('data.json', 'w', encoding='utf-8') as f:
+    json.dump(data_to_export, f, indent=4)

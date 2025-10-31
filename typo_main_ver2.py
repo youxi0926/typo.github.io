@@ -6,6 +6,7 @@ import pandas as pd
 from difflib import SequenceMatcher
 import difflib
 from collections import defaultdict, Counter
+import json
 
 # ====================================================================-
 # --------タイポドメイン抽出----------

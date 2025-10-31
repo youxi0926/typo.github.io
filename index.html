@@ -11,35 +11,62 @@
 </head>
 <body>
     <h2>防御的ドメイン生成サイト</h2>
-    <input type="text" id="domainInput" placeholder="ドメインを入力 (例: gmail.com)" />
-    <button onclick="showTypos()">タイポ候補を表示</button>
+    <p id="loadingMessage">データを読み込み中...</p>
+    <input type="text" id="domainInput" placeholder="ドメインを入力 (例: treasurefactory.co.jp)" disabled />
+    <button onclick="showTypos()" id="typoButton" disabled>タイポ候補を表示</button>
 
     <h3>タイポドメイン候補一覧</h3>
     <ul id="typoList"></ul>
 
     <script>
-        const MAJOR_WEIGHTS = {
-            "隣接キー誤打": 0.264, "二重入力": 0.240, "入力漏れ": 0.219,
-            "スペルミス（認知ミス）": 0.200, "ホモグリフ（視覚類似文字）": 0.031,
-            "ドット抜け": 0.026, "入力順序ミス": 0.020, "左右対称キー誤打": 0.001
-        };
+        // グローバルスコープで変数を定義（fetch後にデータが入る）
+        let MAJOR_WEIGHTS = {};
+        let KEYBOARD_ADJACENT = {};
+        let SYMMETRIC_KEY_PAIRS = [/*...データが入る...*/]; 
+        let HOMOGLYPH_PAIRS = [/*...データが入る...*/];
+        let HOMOGLYPHS_FOR_GENERATOR = {}; // (生成用辞書も必要)
 
-        const KEYBOARD_ADJACENT = { 
-            'q': 'wa', 'w': 'qase', 'e': 'wsdr', 'r': 'edft', 't': 'rfgy',
-            'y': 'tghu', 'u': 'yhji', 'i': 'ujko', 'o': 'iklp', 'p': 'ol',
-            'a': 'qws', 's': 'qwedazx', 'd': 'erfcsx', 'f': 'rtdgvcj',
-            'g': 'tyfhvbn', 'h': 'yugjnb', 'j': 'uikhmnf', 'k': 'ijolm', 'l': 'okp',
-            'z': 'asx', 'x': 'zsdc', 'c': 'xdfv', 'v': 'cfgb', 'b': 'vghn', 'n': 'bhjm', 'm': 'njk,',
-            '.': ',/', ',': 'm.',
-            '-': '^' 
-        };
 
-symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] 
-homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')] 
+        // 🚨 データの二重定義を避けるため、JavaScript内の定数定義は全て削除しました。 🚨
+        
+        
+        // ====================================================================
+        // データの非同期読み込みと初期化 (fetch処理を関数化)
+        // ====================================================================
 
+        async function loadDataAndInitialize() {
+            try {
+                // データの読み込み（data.jsonはPythonで生成されている必要があります）
+                const response = await fetch('data.json');
+                const data = await response.json();
+
+                // Pythonから読み込んだデータでグローバル変数を初期化
+                MAJOR_WEIGHTS = data.major_weights;
+                KEYBOARD_ADJACENT = data.keyboard_adjacent;
+                // 🚨 ここで他の定数もdata.jsonから読み込む必要があります 🚨
+                // 例: SYMMETRIC_KEY_PAIRS = data.symmetric_key_pairs; 
+                //     HOMOGLYPH_PAIRS = data.homoglyph_pairs; 
+
+                document.getElementById('loadingMessage').textContent = 'データ読み込み完了。';
+                document.getElementById('domainInput').disabled = false;
+                document.getElementById('typoButton').disabled = false;
+                
+            } catch (error) {
+                document.getElementById('loadingMessage').textContent = 'エラー: データ (data.json) の読み込みに失敗しました。Pythonでファイルを生成し、GitHubにプッシュしてください。';
+                console.error('データの読み込みエラー:', error);
+            }
+        }
+        
+        // ページロード時にデータ読み込みを開始
+        loadDataAndInitialize();
+
+
+        // ====================================================================
+        // 1. PythonロジックのJavaScript移植
+        // ====================================================================
 
         function levenshteinDistance(s1, s2) {
-            // JavaScript用のシンプルなレーベンシュタイン距離計算（DL距離ではない）
+            // ... (既存のLevenshteinDistanceロジックは変更なし) ...
             const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null));
             for (let i = 0; i <= s1.length; i += 1) { track[0][i] = i; }
             for (let j = 0; j <= s2.length; j += 1) { track[j][0] = j; }
@@ -56,41 +83,40 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
             return track[s2.length][s1.length];
         }
 
-        function isAdjacent(c1, c2) {
-             // 簡易チェック (大文字小文字を無視)
-             c1 = c1.toLowerCase(); c2 = c2.toLowerCase();
-             return (KEYBOARD_ADJACENT[c1] && KEYBOARD_ADJACENT[c1].includes(c2));
-        }
-
-        // 🚨 注意: Pythonのclassify_edit_ops_japaneseは複雑すぎるため、
-        //          ここではスコアリングに必要な最小限のタグ付けをインラインで実施します。
 
         function generateTyposRanked(domain, majorWeights) {
             let variants = new Map(); // Map<typo, Set<causes>>
 
-            // 候補生成ロジック (Pythonのtypo_generator_rankedを再現)
             for (let i = 0; i < domain.length; i++) {
                 const c = domain[i];
+                const cLower = c.toLowerCase();
 
                 // 1. 入力漏れ
                 const delTy = domain.slice(0, i) + domain.slice(i + 1);
                 variants.set(delTy, (variants.get(delTy) || new Set()).add("入力漏れ"));
 
                 // 2. 二重入力
-                const dupTy = domain.slice(0, i + 1) + c + domain.slice(i + 1);
+                const dupTy = domain.slice(0, i) + c + c + domain.slice(i + 1); // 修正: i+1にすべき
                 variants.set(dupTy, (variants.get(dupTy) || new Set()).add("二重入力"));
 
-                // 3. 隣接キー誤打
-                if (isAdjacent(c, 'a')) { // 簡易的な隣接キーチェック
-                    const adjTy = domain.slice(0, i) + 'a' + domain.slice(i + 1);
-                    variants.set(adjTy, (variants.get(adjTy) || new Set()).add("隣接キー誤打"));
+                // 3. ⬇️ 修正: 隣接キー誤打 (全隣接キーを生成) ⬇️
+                if (KEYBOARD_ADJACENT[cLower]) {
+                    // KEYBOARD_ADJACENT[cLower]は文字列なので、1文字ずつループ
+                    for (const adj of KEYBOARD_ADJACENT[cLower]) {
+                        const adjTy = domain.slice(0, i) + adj + domain.slice(i + 1);
+                        variants.set(adjTy, (variants.get(adjTy) || new Set()).add("隣接キー誤打"));
+                    }
                 }
-
+                // ⬆️ 修正: 隣接キー誤打 ⬆️
+                
                 // 4. 入力順序ミス (隣接文字の転置)
                 if (i < domain.length - 1) {
                     const swapTy = domain.slice(0, i) + domain[i + 1] + domain[i] + domain.slice(i + 2);
                     variants.set(swapTy, (variants.get(swapTy) || new Set()).add("入力順序ミス"));
                 }
+                
+                // 🚨 注意: ホモグリフと左右対称キーの生成ロジックが欠落しています。
+                //          それらのデータとロジックをここで追加する必要があります。
             }
 
             // スコアリングとランキング
@@ -101,7 +127,7 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
                 let finalScore = 0;
                 let numCauses = causes.size;
                 
-                // 1. 基本スコア計算 (簡易: 個別重み付けを省略し、大分類重みのみを使用)
+                // 1. 基本スコア計算 (個別重み付けは省略)
                 causes.forEach(cause => {
                     finalScore += majorWeights[cause] || 0;
                 });
@@ -111,7 +137,7 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
                     finalScore *= 0.5; // 複合ミスは50%減点
                 }
                 
-                // 3. 入力漏れ/二重入力のボーナス (観測データ優位性の確保)
+                // 3. 入力漏れ/二重入力のボーナス
                 if (causes.has("入力漏れ") || causes.has("二重入力")) {
                      finalScore += 0.05; 
                 }
@@ -124,7 +150,6 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
                 });
             }
 
-            // スコア降順でランキング
             rankedResults.sort((a, b) => b.score - a.score);
             return rankedResults.slice(0, 10);
         }
@@ -138,6 +163,12 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
         }
 
         function showTypos() {
+            // データが読み込まれていない場合は実行しない
+            if (Object.keys(MAJOR_WEIGHTS).length === 0) {
+                 document.getElementById('typoList').innerHTML = "<li>データを待機中です...</li>";
+                 return;
+            }
+            
             const inputElement = document.getElementById("domainInput");
             const inputDomain = inputElement.value.trim();
             const domain = extractDomain(inputDomain);
@@ -155,7 +186,6 @@ homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'),
             typos.forEach((t, index) => {
                 const li = document.createElement("li");
                 
-                // 元の入力がメールアドレス形式であれば置き換え、そうでなければそのまま表示
                 const fullAddress = inputDomain.includes('@') 
                     ? inputDomain.replace(domain, t.typo) 
                     : t.typo;
