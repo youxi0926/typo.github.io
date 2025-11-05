@@ -164,6 +164,79 @@ def get_transposed_pair(correct, typo):
                 return (correct[i], correct[i+1])
     return None
 
+# --------------------------------------------------------------------------
+# ⭐ 欠落していた識別関数を追加
+# --------------------------------------------------------------------------
+
+def identify_single_replacement(correct, typo):
+    """DL距離1の置換・挿入・削除ミスの差分文字ペアを特定する（予測生成用）。"""
+    matcher = SequenceMatcher(None, correct, typo)
+    ops = matcher.get_opcodes()
+    
+    replacements = [(correct[i1:i2], typo[j1:j2]) for tag, i1, i2, j1, j2 in ops if tag == 'replace']
+    inserts = [(typo[j1:j2]) for tag, i1, i2, j1, j2 in ops if tag == 'insert']
+    deletes = [(correct[i1:i2]) for tag, i1, i2, j1, j2 in ops if tag == 'delete']
+    
+    # 単一のミスであるかチェック（複雑な複合ミスは予測生成時には無視する）
+    if len(replacements) == 1 and not inserts and not deletes:
+        c1 = replacements[0][0]
+        c2 = replacements[0][1]
+        if len(c1) == 1 and len(c2) == 1:
+            return (c1, c2)  # 置換
+            
+    if len(inserts) == 1 and not replacements and not deletes:
+        return ('（空）', inserts[0][0]) # 挿入 (二重入力)
+
+    if len(deletes) == 1 and not replacements and not inserts:
+        return (deletes[0][0], '（空）') # 削除 (入力漏れ/ドット抜け)
+
+    return ('', '') # 複合または非距離1ミス
+
+
+# --------------------------------------------------------------------------
+# ⭐ 欠落していた分析関数 analyze_for_ranking の定義
+# --------------------------------------------------------------------------
+
+def analyze_for_ranking(csv_path):
+    """CSVを読み込み、ランキング用の個別ミス重み (W_individual) を計算する。"""
+    df = pd.read_csv(csv_path)
+    
+    individual_rank_weights = defaultdict(dict)
+    all_causes = []
+    cause_diff_counter = defaultdict(Counter)
+
+    for _, row in df.iterrows():
+        correct = extract_domain(str(row['correct_address']))
+        typo = extract_domain(str(row['input_address']))
+        cause_field = str(row['cause'])
+        causes = [c.strip() for c in cause_field.split('・')]
+
+        diffs = extract_ngram_diffs(correct, typo)
+        all_causes.extend(causes)
+
+        for cause in causes:
+            for c1, c2 in diffs:
+                # 差分パターンをそのまま集計
+                cause_diff_counter[cause][(c1, c2)] += 1
+
+    # 大分類の割合計算 (レポート用)
+    cause_counts = Counter(all_causes)
+    total_major_events = sum(cause_counts.values())
+    major_ratios = {k: round(v / total_major_events, 3) for k, v in cause_counts.items()}
+
+    # W_individual (個別ミス件数 / 全タイポイベント総数) の計算
+    total_typo_events = sum(sum(counter.values()) for counter in cause_diff_counter.values())
+    
+    for cause, counter in cause_diff_counter.items():
+        for key, count in counter.items():
+            # W_individual = 個別ミス件数 / 全タイポイベント総数
+            rank_score = count / total_typo_events
+            individual_rank_weights[cause][key] = rank_score
+            
+    # レポート出力 (ここでは省略しますが、既存のanalyze_ngram_differencesの出力ロジックをここに統合する必要があります)
+    
+    return major_ratios, individual_rank_weights
+
 #--------------------------------------------------------------------------------------
 # cause, correctの付与csvファイル出力関数
 def append_typo_causes(input_csv_path, output_csv_path):
@@ -394,11 +467,14 @@ symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称�
 homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]  # # ホモグラフ, キリル文字の'a'など
 
 
-def typo_generator_ranked(domain: str, top_n: int = 30):
+# def typo_generator_ranked(domain: str, top_n: int = 30):
+# typo_generator_ranked 関数の定義行を探して修正
+def typo_generator_ranked(domain: str, individual_weights: dict, top_n: int = 30):
+    # ... (関数の本体はそのまま) ...
     """
     タイポ原因の重み付けに基づき、発生可能性の高いタイポドメインを生成・ランキングする。
     """
-    variants = {} # {typo_domain: (causes_set, max_score)}
+    variants = defaultdict(lambda: (set(), 0)) # {typo_domain: (causes_set, score)}
 
     # ドメイン全体に対して処理を適用
     for i in range(len(domain)):
@@ -454,24 +530,64 @@ def typo_generator_ranked(domain: str, top_n: int = 30):
         variants[dotless][0].add("ドット抜け")
 
     # --- 統合とスコア集計 ---
-    
+
     ranked_results = []
     
     for typo, (causes, _) in variants.items():
         if typo == domain: continue
         
-        # スコアの計算: 原因の割合 (typo_weights) を合計する
-        score = sum(typo_weights.get(c, 0) for c in causes)
+        final_score = 0
         
-        # スコア0のミス（例：定義から削除した「別TLD結合」など）は除外しない
+        # 距離1のミスの文字ペアを特定
+        c1, c2 = identify_single_replacement(domain, typo) 
+        
+        # 1. 個別ミス重み (W_individual) の適用
+        for cause in causes:
+            W_individual = 0.0 # 見つからなかった場合のデフォルト値
+            
+            # 内部重み (W_individual) の参照ロジック
+            # 転置ミスは、キーが文字列のまま参照される必要があります。
+            if cause == "入力順序ミス":
+                 # キーは文字列 'e r -> r e'
+                 transposed_pair = get_transposed_pair(domain, typo)
+                 if transposed_pair:
+                    k1, k2 = transposed_pair
+                    key = f'{k1} {k2} -> {k2} {k1}'
+                    W_individual = individual_weights.get(cause, {}).get(key, 0.0)
+            
+            elif cause in {"隣接キー誤打", "ホモグリフ（視覚類似文字）", "左右対称キー誤打", "スペルミス（認知ミス）"}:
+                # 置換系 (c1, c2)
+                key = (c1, c2)
+                W_individual = individual_weights.get(cause, {}).get(key, W_individual)
+                if W_individual == 0.0: # 逆順もチェック (置換のみ)
+                    W_individual = individual_weights.get(cause, {}).get((c2, c1), 0.0)
+            
+            elif cause in {"入力漏れ", "ドット抜け"}:
+                # 削除系 (c1, '（空）')
+                key = (c1, '（空）')
+                W_individual = individual_weights.get(cause, {}).get(key, 0.0)
+            
+            elif cause == "二重入力":
+                # 挿入系 ('（空）', c2)
+                key = ('（空）', c2) 
+                W_individual = individual_weights.get(cause, {}).get(key, 0.0)
+
+            # 最終スコア: W_individualを単純に加算 (ボーナス/ペナルティはここでは適用しない)
+            final_score += W_individual
+
+        # 2. 複合ミス ペナルティの適用 (W_individualの合計が過大になるのを防ぐ)
+        if len(causes) > 1:
+            final_score *= 0.5 
+
         
         # Damerau-Levenshtein距離も併せて計算 (分析結果の検証に役立つ)
         distance = damerau_levenshtein_distance(domain, typo)
-        
+
         ranked_results.append({
             "typo": typo,
             "causes": '・'.join(sorted(causes)),
-            "score": round(score, 3),
+            # ⬇️ 修正箇所: score を final_score に変更 ⬇️
+            "score": round(final_score, 3), # ここを final_score に修正
             "distance": distance
         })
 
@@ -483,71 +599,52 @@ def typo_generator_ranked(domain: str, top_n: int = 30):
 
 # ===================================================================
 # --------実行部分----------
-
 if __name__ == "__main__":
-    # ... (既存のタイポ抽出、分類付与、レポートロジックが実行され、typo_weightsが計算された後) ...
-    
-    # ユーザー入力 (if __name__ブロックの最後に配置することを想定)
-    correct_domain = input("\入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
+    # --------------------------------------------------------------------------
+    # 必須ファイルパス設定
+    INPUT_FILE = "filtered_address.csv"
+    DL4_FILTERED_FILE = "filtered_domain_typos_dl4.csv"
+    CAUSES_CSV_FILE = "domaintypos_dl4_causes2.csv"
+    DL_THRESHOLD = 4
 
-    # typo_weights は原因別集計ブロックで計算され、このスコープで利用可能になっている前提
-    if 'typo_weights' in globals() and typo_weights:
+    # 1. タイポの抽出とフィルタリング (中間ファイル生成)
+    filter_domain_differences_with_mismatch(INPUT_FILE, DL4_FILTERED_FILE, DL_THRESHOLD)
+
+    # 2. 原因分類を付与しCSVに出力
+    append_typo_causes(DL4_FILTERED_FILE, CAUSES_CSV_FILE)
+    
+    # --------------------------------------------------------------------------
+    # 3. 分析の実行: 個別ミスの重み (W_individual) を計算
+    # --------------------------------------------------------------------------
+    
+    # analyze_for_rankingを実行し、大分類の重みと個別ミスの重みの両方を受け取る
+    # analyze_for_rankingは、analyze_ngram_differencesの機能を含む、新しい統合関数を想定します。
+    major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
+    
+    # Web用データのエクスポート (オプション: 以前の回答の内容をここに配置)
+    # export_web_data(major_weights, individual_rank_weights) 
+
+    
+
+    # --------------------------------------------------------------------------
+    # 4. ドメインランキング生成の実行
+    # --------------------------------------------------------------------------
+    
+    correct_domain = input("\n 入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
+    
+    if major_weights and individual_rank_weights:
         print("\n" + "=" * 78)
         print(f"'{correct_domain}' に対する予測タイポドメインランキング:\n")
         
-        predicted_typos = typo_generator_ranked(correct_domain, top_n=10)
+        # typo_generator_ranked 関数に、計算した個別ミス重み (individual_rank_weights) を渡す
+        # すべての引数をキーワードで指定し、順序依存性をなくす（より安全）
+        predicted_typos = typo_generator_ranked(
+            domain=correct_domain,
+            individual_weights=individual_rank_weights, # 新しいスコアの主軸となる個別重み
+            top_n=10
+        )
         
         for i, r in enumerate(predicted_typos):
-            print(f"{i+1}位 {r['typo']:<30} (スコア: {r['score']:.3f}, 距離: {r['distance']}, 原因: {r['causes']})")
+            print(f"{i+1}位 {r['typo']:<30} (スコア: {r['score']:.5f}, 距離: {r['distance']}, 原因: {r['causes']})")
     else:
-        print("\n[エラー] typo_weights が計算されていないため、ランキング生成を実行できませんでした。")
-
-
-    web_data_export = {
-        # 1. 主要な原因の重み (W_major)
-        "major_weights": cause_ratios,
-        
-        # 2. キーボードレイアウト（タイポ生成ロジック用）
-        "keyboard_adjacent": keyboard_adjacent,
-
-        # 3. ホモグリフペア（JSONで扱いやすいようリストのリストに変換）
-        # ※ homoglyph_pairsはタプルのリストなので、リストに変換する必要があります
-        "homoglyph_pairs": [list(pair) for pair in homoglyph_pairs],
-        
-        # 4. 左右対称キーペア
-        "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
-        
-        # 5. [TODO] 個別ミスの内部重み (internal_weights) - ※現状は複雑なので注意
-        # "internal_weights": internal_weights, 
-    }
-
-    OUTPUT_JSON_FILE = "data.json"
-
-    try:
-        with open(OUTPUT_JSON_FILE, 'w', encoding='utf-8') as f:
-            # JSON形式でファイルに出力（ensure_ascii=Falseで日本語も扱えるように）
-            json.dump(web_data_export, f, indent=4, ensure_ascii=False)
-        print(f"\n[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
-    except Exception as e:
-        print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")
-        
-    # --------------------------------------------------------------------------
-    # 3. コンソールでのタイポドメインランキング実行 (元のコードを維持)
-    # --------------------------------------------------------------------------
-    
-    # 'typo_weights' が定義されていることを前提とする
-    if 'typo_weights' in globals():
-        correct_domain = input("\n入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
-
-        # typo_domain_ranking_with_reason_jp または typo_generator_ranked を使用
-        # ※ typo_generator_rankedを使う場合は、major_weights, internal_weightsを引数に渡す必要があります。
-        
-        # 例: predicted_typos = typo_generator_ranked(correct_domain, major_weights, internal_weights, top_n=10)
-        
-        # 既存のランキング関数を使用する場合 (コードに typo_domain_ranking_with_reason_jp が必要です):
-        if 'typo_domain_ranking_with_reason_jp' in globals():
-            typo_domain_ranking_with_reason_jp("filtered_domain_typos_dl4.csv", correct_domain)
-        else:
-            print("\n[注意] ランキング関数が未定義のため、コンソール出力はスキップされました。")
-    else:
-        print("\n[エラー] typo_weights が計算されていないため、ランキング生成を実行できませんでした。")
+        print("\n[エラー] 重みデータが計算されていないため、ランキング生成を実行できませんでした。")

@@ -19,33 +19,28 @@
     <ul id="typoList"></ul>
 
     <script>
-        // グローバルスコープで変数を定義（fetch後にデータが入る）
+        // グローバル変数の定義 (Pythonデータで初期化される)
         let MAJOR_WEIGHTS = {};
+        let INDIVIDUAL_WEIGHTS = {};
         let KEYBOARD_ADJACENT = {};
-        let SYMMETRIC_KEY_PAIRS = [/*...データが入る...*/]; 
-        let HOMOGLYPH_PAIRS = [/*...データが入る...*/];
-        let HOMOGLYPHS_FOR_GENERATOR = {}; // (生成用辞書も必要)
+        let SYMMETRIC_KEY_PAIRS = []; 
+        let HOMOGLYPHS_FOR_GENERATOR = {}; 
 
-
-        // 🚨 データの二重定義を避けるため、JavaScript内の定数定義は全て削除しました。 🚨
-        
-        
         // ====================================================================
-        // データの非同期読み込みと初期化 (fetch処理を関数化)
+        // 1. データ読み込みとヘルパー関数
         // ====================================================================
 
         async function loadDataAndInitialize() {
             try {
-                // データの読み込み（data.jsonはPythonで生成されている必要があります）
                 const response = await fetch('data.json');
                 const data = await response.json();
 
                 // Pythonから読み込んだデータでグローバル変数を初期化
                 MAJOR_WEIGHTS = data.major_weights;
+                INDIVIDUAL_WEIGHTS = data.individual_weights; // 個別ミス重みをロード
                 KEYBOARD_ADJACENT = data.keyboard_adjacent;
-                // 🚨 ここで他の定数もdata.jsonから読み込む必要があります 🚨
-                // 例: SYMMETRIC_KEY_PAIRS = data.symmetric_key_pairs; 
-                //     HOMOGLYPH_PAIRS = data.homoglyph_pairs; 
+                SYMMETRIC_KEY_PAIRS = data.symmetric_key_pairs;
+                HOMOGLYPHS_FOR_GENERATOR = data.homoglyphs_for_generator;
 
                 document.getElementById('loadingMessage').textContent = 'データ読み込み完了。';
                 document.getElementById('domainInput').disabled = false;
@@ -60,13 +55,11 @@
         // ページロード時にデータ読み込みを開始
         loadDataAndInitialize();
 
-
-        // ====================================================================
-        // 1. PythonロジックのJavaScript移植
-        // ====================================================================
+        
+        // --- ヘルパー関数 ---
 
         function levenshteinDistance(s1, s2) {
-            // ... (既存のLevenshteinDistanceロジックは変更なし) ...
+            // Pythonのロジックに合わせた簡易レーベンシュタイン距離
             const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null));
             for (let i = 0; i <= s1.length; i += 1) { track[0][i] = i; }
             for (let j = 0; j <= s2.length; j += 1) { track[j][0] = j; }
@@ -74,49 +67,94 @@
                 for (let i = 1; i <= s1.length; i += 1) {
                     const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1;
                     track[j][i] = Math.min(
-                        track[j][i - 1] + 1, // deletion
-                        track[j - 1][i] + 1, // insertion
-                        track[j - 1][i - 1] + indicator // substitution
+                        track[j][i - 1] + 1,
+                        track[j - 1][i] + 1,
+                        track[j - 1][i - 1] + indicator
                     );
                 }
             }
             return track[s2.length][s1.length];
         }
 
+        function identifySingleReplacement(correct, typo) {
+            // Python版identify_single_replacementの簡易実装 (DL距離1の単一ミスを特定)
+            // 複雑なSequenceMatcherを再現せず、文字列操作で単一ミスを特定します。
+            
+            if (Math.abs(correct.length - typo.length) > 1) return ['', '']; // DL距離1ではない
 
-        function generateTyposRanked(domain, majorWeights) {
-            let variants = new Map(); // Map<typo, Set<causes>>
+            // 置換チェック (Replace)
+            if (correct.length === typo.length) {
+                let diffIndex = -1;
+                for (let i = 0; i < correct.length; i++) {
+                    if (correct[i] !== typo[i]) {
+                        if (diffIndex !== -1) return ['', '']; // 複数の置換
+                        diffIndex = i;
+                    }
+                }
+                return diffIndex !== -1 ? [correct[diffIndex], typo[diffIndex]] : ['', ''];
+            }
+            
+            // 挿入/削除チェック (Insert/Delete) - 1文字差のみ
+            if (correct.length < typo.length) { // 挿入 (二重入力)
+                for(let i=0; i<typo.length; i++) {
+                    if (typo.slice(0, i) + typo.slice(i + 1) === correct) {
+                        return ['（空）', typo[i]];
+                    }
+                }
+            } else if (correct.length > typo.length) { // 削除 (入力漏れ/ドット抜け)
+                 for(let i=0; i<correct.length; i++) {
+                    if (correct.slice(0, i) + correct.slice(i + 1) === typo) {
+                        return [correct[i], '（空）'];
+                    }
+                }
+            }
+            
+            return ['', '']; 
+        }
+
+        // ====================================================================
+        // 2. タイポ生成とスコアリング (W_individual を使用)
+        // ====================================================================
+
+        function generateTyposRanked(domain, individualWeights) {
+            let variants = new Map(); 
 
             for (let i = 0; i < domain.length; i++) {
                 const c = domain[i];
                 const cLower = c.toLowerCase();
 
-                // 1. 入力漏れ
+                // 1. 入力漏れ (Deletion)
                 const delTy = domain.slice(0, i) + domain.slice(i + 1);
-                variants.set(delTy, (variants.get(delTy) || new Set()).add("入力漏れ"));
+                variants.set(delTy, (variants.get(delTy) || new Set()).add(c === '.' ? "ドット抜け" : "入力漏れ"));
 
-                // 2. 二重入力
-                const dupTy = domain.slice(0, i) + c + c + domain.slice(i + 1); // 修正: i+1にすべき
+                // 2. 二重入力 (Insertion/Repetition)
+                const dupTy = domain.slice(0, i + 1) + c + domain.slice(i + 1);
                 variants.set(dupTy, (variants.get(dupTy) || new Set()).add("二重入力"));
 
-                // 3. ⬇️ 修正: 隣接キー誤打 (全隣接キーを生成) ⬇️
+                // 3. 隣接キー誤打
                 if (KEYBOARD_ADJACENT[cLower]) {
-                    // KEYBOARD_ADJACENT[cLower]は文字列なので、1文字ずつループ
                     for (const adj of KEYBOARD_ADJACENT[cLower]) {
                         const adjTy = domain.slice(0, i) + adj + domain.slice(i + 1);
                         variants.set(adjTy, (variants.get(adjTy) || new Set()).add("隣接キー誤打"));
                     }
                 }
-                // ⬆️ 修正: 隣接キー誤打 ⬆️
                 
-                // 4. 入力順序ミス (隣接文字の転置)
+                // 4. ホモグリフ・視覚類似文字
+                if (HOMOGLYPHS_FOR_GENERATOR[cLower]) {
+                    for (const g of HOMOGLYPHS_FOR_GENERATOR[cLower]) {
+                         const typo = domain.slice(0, i) + g + domain.slice(i + 1);
+                         variants.set(typo, (variants.get(typo) || new Set()).add("ホモグリフ（視覚類似文字）"));
+                    }
+                }
+                
+                // 5. 左右対称キー誤打 (symmetric_key_pairs はタプルのリストなので、生成には不向きのため簡易チェック)
+                // 🚨 NOTE: 正確なPythonロジックを再現するには、この部分も改善が必要ですが、ここでは基本の生成のみ維持。
+
+                // 6. 入力順序ミス (Transposition)
                 if (i < domain.length - 1) {
                     const swapTy = domain.slice(0, i) + domain[i + 1] + domain[i] + domain.slice(i + 2);
                     variants.set(swapTy, (variants.get(swapTy) || new Set()).add("入力順序ミス"));
                 }
-                
-                // 🚨 注意: ホモグリフと左右対称キーの生成ロジックが欠落しています。
-                //          それらのデータとロジックをここで追加する必要があります。
             }
 
             // スコアリングとランキング
@@ -127,19 +165,54 @@
                 let finalScore = 0;
                 let numCauses = causes.size;
                 
-                // 1. 基本スコア計算 (個別重み付けは省略)
+                // 距離1のミスの文字ペアを特定 (スコアリングの必須要件)
+                const [c1, c2] = identifySingleReplacement(domain, typo);
+
+                // 1. 個別ミス重み (W_individual) の適用
                 causes.forEach(cause => {
-                    finalScore += majorWeights[cause] || 0;
+                    let W_individual = 0.0;
+                    let key = null;
+                    
+                    if (cause === "入力順序ミス") {
+                        // 転置は特殊: Pythonで生成された文字列キーを構築
+                        const pair = (domain.length === typo.length && Math.abs(levenshteinDistance(domain, typo)) === 2) ? [domain[i], typo[i+1]] : null;
+                        if (pair) key = `${pair[0]} ${pair[1]} -> ${pair[1]} ${pair[0]}`;
+                    } else if (c1 && c2 && c1 !== '（空）' && c2 !== '（空）') {
+                        // 置換系
+                        key = [c1, c2];
+                    } else if (c2 === '（空）' && c1) {
+                        // 削除系
+                        key = [c1, '（空）'];
+                    } else if (c1 === '（空）' && c2) {
+                        // 挿入系
+                        key = ['（空）', c2];
+                    }
+
+                    if (key) {
+                        // W_individual の参照 (JSONオブジェクトはタプルキーを文字列として持つため、join('')で比較)
+                        let keyStr = Array.isArray(key) ? key.join('') : key;
+                        
+                        W_individual = individualWeights[cause] ? individualWeights[cause][keyStr] || 0.0 : 0.0;
+                        
+                        // 逆順チェック (置換のみ)
+                        if (W_individual === 0.0 && Array.isArray(key) && key.length === 2 && key[0] !== '（空）' && key[1] !== '（空）') {
+                             keyStr = [key[1], key[0]].join('');
+                             W_individual = individualWeights[cause] ? individualWeights[cause][keyStr] || 0.0 : 0.0;
+                        }
+                    }
+
+                    finalScore += W_individual;
                 });
+                
 
                 // 2. 複合ミス ペナルティ
                 if (numCauses > 1) {
-                    finalScore *= 0.5; // 複合ミスは50%減点
+                    finalScore *= 0.5; 
                 }
                 
-                // 3. 入力漏れ/二重入力のボーナス
-                if (causes.has("入力漏れ") || causes.has("二重入力")) {
-                     finalScore += 0.05; 
+                // 3. 入力漏れ/二重入力のボーナス (観測データ優位性の確保 - 調整可能)
+                if (causes.has("入力漏れ") || causes.has("二重入力") || causes.has("ドット抜け")) {
+                     finalScore += 0.0001; // ボーナスを極小に調整し、個別重みを尊重
                 }
 
                 rankedResults.push({
@@ -153,17 +226,14 @@
             rankedResults.sort((a, b) => b.score - a.score);
             return rankedResults.slice(0, 10);
         }
-
-        // ====================================================================
-        // 2. UI操作ロジック
-        // ====================================================================
+        
+        // ... (UI操作ロジック showTypos/extractDomain は変更なし) ...
 
         function extractDomain(input) {
             return input.split('@').length > 1 ? input.split('@')[1] : input;
         }
 
         function showTypos() {
-            // データが読み込まれていない場合は実行しない
             if (Object.keys(MAJOR_WEIGHTS).length === 0) {
                  document.getElementById('typoList').innerHTML = "<li>データを待機中です...</li>";
                  return;
@@ -181,7 +251,8 @@
                 return;
             }
 
-            const typos = generateTyposRanked(domain, MAJOR_WEIGHTS);
+            // generateTyposRankedに渡すのはドメイン部分のみ (アドレス全体生成はより複雑なため)
+            const typos = generateTyposRanked(domain, INDIVIDUAL_WEIGHTS);
 
             typos.forEach((t, index) => {
                 const li = document.createElement("li");
@@ -192,7 +263,7 @@
                 
                 li.innerHTML = `
                     <strong>${index + 1}位: ${fullAddress}</strong>
-                    (スコア: ${t.score.toFixed(3)}, 距離: ${t.distance}, 原因: ${t.causes})
+                    (スコア: ${t.score.toFixed(6)}, 距離: ${t.distance}, 原因: ${t.causes})
                 `;
                 list.appendChild(li);
             });

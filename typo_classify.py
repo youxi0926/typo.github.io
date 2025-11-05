@@ -78,7 +78,7 @@ keyboard_adjacent = { # キーボード隣接キーマップ
 }
 
 symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称配置キー誤打（例: f ↔ j）
-homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]  # # ホモグラフ, キリル文字の'a'など
+homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd'), ('o', 'a')]  # # ホモグラフ, キリル文字の'a'など
 
 def keyboard_adjacent_check(c1, c2):
     return c1.lower() in keyboard_adjacent and c2.lower() in keyboard_adjacent[c1.lower()]
@@ -253,8 +253,6 @@ def analyze_ngram_differences(csv_path):
         # for cause in causes:  #各タイポの原因（例: 隣接キー誤打、二重入力）ごとに処理を繰り返す
         #     for c1, c2 in diffs:  #そのタイポで発生した各差分パターン（例: a → o, （空） → u）ごとに処理を繰り返す
         #         cause_diff_counter[cause][(c1, c2)] += 1
-
-
 
         for cause in causes:
             # 入力順序ミスの場合は既に集計済みのため、スキップ
