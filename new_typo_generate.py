@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 import difflib
 from collections import defaultdict, Counter
 import json
+from typing import Dict, Tuple, Any, List, Set
 
 # ====================================================================-
 # --------タイポドメイン抽出----------
