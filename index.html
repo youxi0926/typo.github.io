@@ -152,14 +152,16 @@
                 }
                 
                 // 5. 左右対称キー誤打 (Substitution)
-                SYMMETRIC_KEY_PAIRS.forEach(pair => {
-                    const [a, b] = pair;
-                    if (cLower === a || cLower === b) {
-                        const replacement = cLower === a ? b : a;
-                        const typo = domain.slice(0, i) + replacement + domain.slice(i + 1);
-                        variants.set(typo, (variants.get(typo) || new Set()).add("左右対称キー誤打"));
-                    }
-                });
+                if (Array.isArray(SYMMETRIC_KEY_PAIRS)) {
+                    SYMMETRIC_KEY_PAIRS.forEach(pair => {
+                        const [a, b] = pair;
+                        if (cLower === a || cLower === b) {
+                            const replacement = cLower === a ? b : a;
+                            const typo = domain.slice(0, i) + replacement + domain.slice(i + 1);
+                            variants.set(typo, (variants.get(typo) || new Set()).add("左右対称キー誤打"));
+                        }
+                    });
+                }
 
                 // 6. 入力順序ミス (Transposition)
                 if (i < domain.length - 1) {
