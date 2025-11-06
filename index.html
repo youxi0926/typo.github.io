@@ -1,53 +1,134 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>静的タイポ分析結果</title>
-    <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
-        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-        th { background-color: #f2f2f2; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Typo Generator</title>
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 2rem auto;
+      max-width: 700px;
+      line-height: 1.6;
+    }
+    input, button {
+      padding: 0.5rem 0.8rem;
+      font-size: 1rem;
+    }
+    button {
+      cursor: pointer;
+      background-color: #4a90e2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      margin-left: 0.5rem;
+    }
+    button:hover {
+      background-color: #357ABD;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+    }
+  </style>
 </head>
 <body>
-    <h1>📋 ドメインタイポ分析結果（静的表示）</h1>
-    <p>このデータは、Pythonプログラムをローカルで実行した際に生成された **web_data.json** ファイルをもとに表示されています。</p>
+  <h1>Typo Generator</h1>
+  <p>ドメインを入力すると、タイポ候補とスコアを自動生成します。</p>
 
-    <section id="prediction-ranking">
-        <h2>予測タイポドメインランキング</h2>
-        <p>（分析ドメイン: <strong id="demo-domain-name">...</strong>）</p>
-        <table id="ranking-table">
-            <thead>
-                <tr>
-                    <th>順位</th>
-                    <th>タイポドメイン</th>
-                    <th>スコア</th>
-                    <th>DL距離</th>
-                    <th>主要な原因</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td colspan="5">データをロード中です...</td></tr>
-            </tbody>
-        </table>
-    </section>
+  <input id="domain" placeholder="example.com" />
+  <button id="run-btn">生成</button>
+  <pre id="output"></pre>
 
-    <section id="cause-analysis">
-        <h2>原因別集計と割合（大分類）</h2>
-        <table id="major-weights-table">
-            <thead>
-                <tr>
-                    <th>原因</th>
-                    <th>割合（重み）</th>
-                </tr>
-            </thead>
-            <tbody>
-                </tbody>
-        </table>
-    </section>
+  <py-script>
+from js import document
+from pyodide.ffi import create_proxy
+from collections import defaultdict
 
-    <script src="script.js"></script>
+# 簡易キーボード隣接キー定義
+keyboard_adjacent = {
+    'a': 'qwsz',
+    's': 'awedxz',
+    'd': 'serfcx',
+    'f': 'drtgcv',
+    'g': 'ftyhbv',
+    'h': 'gyujnb',
+    'j': 'huikmn',
+    'k': 'jiolm,',
+    'l': 'kop;.',
+}
+
+def simple_score(base, typo):
+    """単純なスコア関数（差分が少ないほど高スコア）"""
+    diff = sum(1 for a, b in zip(base, typo) if a != b)
+    return round(1 / (1 + diff), 3)
+
+def generate_typos(domain):
+    """ドメイン名からタイポ候補を生成"""
+    variants = defaultdict(set)
+
+    for i in range(len(domain)):
+        c = domain[i]
+
+        # 入力漏れ
+        typo = domain[:i] + domain[i+1:]
+        variants[typo].add("入力漏れ")
+
+        # 二重入力
+        typo = domain[:i] + c + c + domain[i+1:]
+        variants[typo].add("二重入力")
+
+        # 隣接キー誤打
+        for adj in keyboard_adjacent.get(c.lower(), ''):
+            typo = domain[:i] + adj + domain[i+1:]
+            variants[typo].add("隣接キー誤打")
+
+    # ドット抜け
+    if '.' in domain:
+        typo = domain.replace('.', '', 1)
+        variants[typo].add("ドット抜け")
+
+    # 入力順序ミス
+    for i in range(len(domain) - 1):
+        swapped = domain[:i] + domain[i+1] + domain[i] + domain[i+2:]
+        variants[swapped].add("入力順序ミス")
+
+    return variants
+
+def run(event):
+    domain = document.getElementById("domain").value.strip()
+    output_elem = document.getElementById("output")
+
+    if not domain:
+        output_elem.innerText = "⚠️ ドメインを入力してください。"
+        return
+
+    variants = generate_typos(domain)
+    results = []
+
+    for typo, causes in variants.items():
+        if typo == domain:
+            continue
+        score = simple_score(domain, typo)
+        results.append((typo, "・".join(causes), score))
+
+    if not results:
+        output_elem.innerText = "タイポ候補が生成されませんでした。"
+        return
+
+    results.sort(key=lambda x: x[2], reverse=True)
+
+    text = f"『{domain}』のタイポ候補（上位10件）:\n\n"
+    for i, (typo, cause, score) in enumerate(results[:10], 1):
+        text += f"{i:>2}位: {typo:<25} | 原因: {cause:<12} | スコア: {score}\n"
+
+    output_elem.innerText = text
+
+document.getElementById("run-btn").addEventListener("click", create_proxy(run))
+  </py-script>
 </body>
 </html>
