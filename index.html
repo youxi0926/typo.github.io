@@ -1,134 +1,104 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>Typo Generator</title>
-  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
-  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      margin: 2rem auto;
-      max-width: 700px;
-      line-height: 1.6;
-    }
-    input, button {
-      padding: 0.5rem 0.8rem;
-      font-size: 1rem;
-    }
-    button {
-      cursor: pointer;
-      background-color: #4a90e2;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      margin-left: 0.5rem;
-    }
-    button:hover {
-      background-color: #357ABD;
-    }
-    pre {
-      background: #f5f5f5;
-      padding: 1rem;
-      border-radius: 8px;
-      margin-top: 1rem;
-      white-space: pre-wrap;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>予測タイポドメインランキング</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 20px; box-sizing: border-box; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        .ranking-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .rank { font-weight: bold; font-size: 1.2em; color: #28a745; margin-right: 10px; }
+        .typo { font-family: monospace; font-size: 1.1em; color: #dc3545; }
+        .score-info { font-size: 0.9em; color: #6c757d; }
+    </style>
 </head>
 <body>
-  <h1>Typo Generator</h1>
-  <p>ドメインを入力すると、タイポ候補とスコアを自動生成します。</p>
 
-  <input id="domain" placeholder="example.com" />
-  <button id="run-btn">生成</button>
-  <pre id="output"></pre>
+    <h1>🥇 予測タイポドメインランキング</h1>
+    <p>ドメイン名を入力し、予測されるタイポドメイン候補をランキング表示します。</p>
 
-  <py-script>
-from js import document
-from pyodide.ffi import create_proxy
-from collections import defaultdict
+    <input type="text" id="domainInput" placeholder="例: treasurefactory.co.jp">
+    <button onclick="generateRanking()">ランキングを生成</button>
 
-# 簡易キーボード隣接キー定義
-keyboard_adjacent = {
-    'a': 'qwsz',
-    's': 'awedxz',
-    'd': 'serfcx',
-    'f': 'drtgcv',
-    'g': 'ftyhbv',
-    'h': 'gyujnb',
-    'j': 'huikmn',
-    'k': 'jiolm,',
-    'l': 'kop;.',
-}
+    <hr>
 
-def simple_score(base, typo):
-    """単純なスコア関数（差分が少ないほど高スコア）"""
-    diff = sum(1 for a, b in zip(base, typo) if a != b)
-    return round(1 / (1 + diff), 3)
+    <h2>予測結果</h2>
+    <div id="rankingOutput">
+        <p>ドメイン名を入力して「ランキングを生成」をクリックしてください。</p>
+    </div>
 
-def generate_typos(domain):
-    """ドメイン名からタイポ候補を生成"""
-    variants = defaultdict(set)
+    <script src="typo_ranking.js"></script>
 
-    for i in range(len(domain)):
-        c = domain[i]
+    <script>
+        let typoRanker = null;
 
-        # 入力漏れ
-        typo = domain[:i] + domain[i+1:]
-        variants[typo].add("入力漏れ")
+        /**
+         * Pythonで分析・エクスポートされたJSONデータを読み込み、TypoRankerを初期化
+         */
+        async function initRanker() {
+            try {
+                // NOTE: 'data.json' は Python スクリプトで生成されたファイルである必要があります
+                const response = await fetch('data.json'); 
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                typoRanker = new TypoRanker(data);
+                console.log("TypoRanker 初期化完了。重みデータをロードしました。");
+            } catch (e) {
+                const output = document.getElementById('rankingOutput');
+                output.innerHTML = `<p style="color: red;">[エラー] 重みデータ (data.json) の読み込みに失敗しました。Pythonスクリプトを実行してファイルが生成されているか確認してください。<br>エラー詳細: ${e.message}</p>`;
+                console.error("JSONロードエラー:", e);
+            }
+        }
 
-        # 二重入力
-        typo = domain[:i] + c + c + domain[i+1:]
-        variants[typo].add("二重入力")
+        /**
+         * 入力に基づいてランキングを生成し、HTMLに表示する
+         */
+        function generateRanking() {
+            if (!typoRanker) {
+                alert("重みデータがまだロードされていません。しばらく待ってから再度お試しください。");
+                return;
+            }
 
-        # 隣接キー誤打
-        for adj in keyboard_adjacent.get(c.lower(), ''):
-            typo = domain[:i] + adj + domain[i+1:]
-            variants[typo].add("隣接キー誤打")
+            const domain = document.getElementById('domainInput').value.trim();
+            const outputDiv = document.getElementById('rankingOutput');
+            outputDiv.innerHTML = '';
 
-    # ドット抜け
-    if '.' in domain:
-        typo = domain.replace('.', '', 1)
-        variants[typo].add("ドット抜け")
+            if (!domain) {
+                outputDiv.innerHTML = '<p>ドメイン名を入力してください。</p>';
+                return;
+            }
 
-    # 入力順序ミス
-    for i in range(len(domain) - 1):
-        swapped = domain[:i] + domain[i+1] + domain[i] + domain[i+2:]
-        variants[swapped].add("入力順序ミス")
+            const topN = 10;
+            const predictedTypos = typoRanker.typoGeneratorRanked(domain, topN);
 
-    return variants
+            if (predictedTypos.length === 0) {
+                outputDiv.innerHTML = `<p><strong>${domain}</strong> に対する有力なタイポ候補は見つかりませんでした。</p>`;
+                return;
+            }
 
-def run(event):
-    domain = document.getElementById("domain").value.strip()
-    output_elem = document.getElementById("output")
+            let html = `<h3>'${domain}' に対する予測ランキング (上位 ${predictedTypos.length} 件)</h3>`;
 
-    if not domain:
-        output_elem.innerText = "⚠️ ドメインを入力してください。"
-        return
+            predictedTypos.forEach((r, i) => {
+                html += `
+                    <div class="ranking-item">
+                        <span class="rank">${i + 1}位</span> 
+                        <span class="typo">${r.typo}</span>
+                        <div class="score-info">
+                            スコア: ${r.score.toFixed(6)} | 距離: ${r.distance} | 原因: ${r.causes}
+                        </div>
+                    </div>
+                `;
+            });
 
-    variants = generate_typos(domain)
-    results = []
+            outputDiv.innerHTML = html;
+        }
 
-    for typo, causes in variants.items():
-        if typo == domain:
-            continue
-        score = simple_score(domain, typo)
-        results.append((typo, "・".join(causes), score))
+        // ページロード時に初期化を実行
+        initRanker();
 
-    if not results:
-        output_elem.innerText = "タイポ候補が生成されませんでした。"
-        return
-
-    results.sort(key=lambda x: x[2], reverse=True)
-
-    text = f"『{domain}』のタイポ候補（上位10件）:\n\n"
-    for i, (typo, cause, score) in enumerate(results[:10], 1):
-        text += f"{i:>2}位: {typo:<25} | 原因: {cause:<12} | スコア: {score}\n"
-
-    output_elem.innerText = text
-
-document.getElementById("run-btn").addEventListener("click", create_proxy(run))
-  </py-script>
+    </script>
 </body>
 </html>

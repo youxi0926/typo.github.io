@@ -587,7 +587,6 @@ def typo_generator_ranked(domain: str, individual_weights: dict, top_n: int = 30
         ranked_results.append({
             "typo": typo,
             "causes": '・'.join(sorted(causes)),
-            # ⬇️ 修正箇所: score を final_score に変更 ⬇️
             "score": round(final_score, 3), # ここを final_score に修正
             "distance": distance
         })
@@ -621,9 +620,6 @@ if __name__ == "__main__":
     # analyze_for_rankingを実行し、大分類の重みと個別ミスの重みの両方を受け取る
     # analyze_for_rankingは、analyze_ngram_differencesの機能を含む、新しい統合関数を想定します。
     major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
-    
-    # Web用データのエクスポート (オプション: 以前の回答の内容をここに配置)
-    # export_web_data(major_weights, individual_rank_weights) 
 
 
     # --------------------------------------------------------------------------
