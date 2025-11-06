@@ -71,7 +71,7 @@
                 return;
             }
 
-            const topN = 20; //上位何件表示するか
+            const topN = 10; //上位何件表示するか
             const predictedTypos = typoRanker.typoGeneratorRanked(domain, topN);
 
             if (predictedTypos.length === 0) {
