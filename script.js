@@ -1,16 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // web_data.json ファイルを非同期で読み込む
     fetch('web_data.json')
         .then(response => {
             if (!response.ok) {
-                throw new Error('JSONファイルの読み込みに失敗しました: ' + response.statusText);
+                // ファイルが見つからない、またはサーバーエラーの場合
+                throw new Error('web_data.json の読み込みに失敗しました (' + response.status + ')。ファイルがGitHub Pagesにアップロードされているか確認してください。');
             }
             return response.json();
         })
         .then(data => {
-            // 予測ランキングの表示
+            // データの表示
             displayPredictionRanking(data.predicted_typos, data.demo_domain);
-            
-            // 原因別集計の表示
             displayMajorWeights(data.major_weights);
         })
         .catch(error => {
@@ -22,12 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /**
  * 予測ランキングテーブルを作成する
- * @param {Array<Object>} typos - typo_generator_rankedの出力
- * @param {string} domain - 分析対象のドメイン
  */
 function displayPredictionRanking(typos, domain) {
     document.getElementById('demo-domain-name').textContent = domain;
     const tbody = document.getElementById('ranking-table').querySelector('tbody');
+    tbody.innerHTML = ''; // 既存の「ロード中です...」をクリア
     
     typos.forEach((item, index) => {
         const row = tbody.insertRow();
@@ -41,7 +40,6 @@ function displayPredictionRanking(typos, domain) {
 
 /**
  * 主要な原因別割合テーブルを作成する
- * @param {Object} weights - major_weightsのオブジェクト
  */
 function displayMajorWeights(weights) {
     const tbody = document.getElementById('major-weights-table').querySelector('tbody');

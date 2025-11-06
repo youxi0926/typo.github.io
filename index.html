@@ -2,22 +2,22 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドメインタイポ分析結果</title>
+    <title>静的タイポ分析結果</title>
     <style>
         body { font-family: sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
         h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #f2f2f2; }
     </style>
 </head>
 <body>
-    <h1>ドメインタイポ分析と予測結果</h1>
-    <p>このページは、Pythonスクリプトで生成された静的なJSONデータをもとに表示されています。</p>
+    <h1>📋 ドメインタイポ分析結果（静的表示）</h1>
+    <p>このデータは、Pythonプログラムをローカルで実行した際に生成された **web_data.json** ファイルをもとに表示されています。</p>
 
     <section id="prediction-ranking">
         <h2>予測タイポドメインランキング</h2>
-        <p>（ドメイン: <span id="demo-domain-name"></span>）</p>
+        <p>（分析ドメイン: <strong id="demo-domain-name">...</strong>）</p>
         <table id="ranking-table">
             <thead>
                 <tr>
@@ -29,7 +29,8 @@
                 </tr>
             </thead>
             <tbody>
-                </tbody>
+                <tr><td colspan="5">データをロード中です...</td></tr>
+            </tbody>
         </table>
     </section>
 

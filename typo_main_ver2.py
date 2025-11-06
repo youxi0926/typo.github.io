@@ -83,6 +83,8 @@ keyboard_adjacent = { # キーボード隣接キーマップ
 symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称配置キー誤打（例: f ↔ j）
 homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]  # # ホモグラフ, キリル文字の'a'など
 
+INDIVIDUAL_WEIGHTS: Dict[str, Dict[str, float]] = {}
+
 def keyboard_adjacent_check(c1, c2):
     return c1.lower() in keyboard_adjacent and c2.lower() in keyboard_adjacent[c1.lower()]
 
@@ -615,7 +617,7 @@ def convert_internal_keys_to_str(individual_weights: Dict[str, Dict[Tuple[Any, A
 
 
 # ===================================================================
-# --------実行部分----------
+# --------実行部分（JSON生成に特化）----------
 if __name__ == "__main__":
     # --------------------------------------------------------------------------
     # 必須ファイルパス設定
@@ -625,45 +627,48 @@ if __name__ == "__main__":
     DL_THRESHOLD = 4
 
     # 1. タイポの抽出とフィルタリング (中間ファイル生成)
+    print(f"[STEP 1] {DL4_FILTERED_FILE} の生成...")
     filter_domain_differences_with_mismatch(INPUT_FILE, DL4_FILTERED_FILE, DL_THRESHOLD)
 
     # 2. 原因分類を付与しCSVに出力
+    print(f"[STEP 2] {CAUSES_CSV_FILE} の生成...")
     append_typo_causes(DL4_FILTERED_FILE, CAUSES_CSV_FILE)
     
     # --------------------------------------------------------------------------
-    # 3. 分析の実行: 個別ミスの重み (W_individual) を計算
+    # 3. 分析の実行: 個別ミスの重み (W_individual) と大分類の重みを計算
     # --------------------------------------------------------------------------
     
-    # analyze_for_rankingを実行し、大分類の重みと個別ミスの重みの両方を受け取る
-    # analyze_for_rankingは、analyze_ngram_differencesの機能を含む、新しい統合関数を想定します。
+    print("[STEP 3] 個別ミス重み (W_individual) の計算...")
+    # analyze_for_rankingは、CSVを読み込み、major_weightsとindividual_rank_weightsを計算する関数
     major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
 
-# --------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # 4. Web用データのエクスポート (JSON変換を適用)
     # --------------------------------------------------------------------------
     
-    # 【追加・変更】デモ用の予測ランキングをJSONに含めるための設定
-    # ※ サイトで表示したい主要なドメインをここで設定
-    DEMO_DOMAIN = "treasurefactory.co.jp" 
+    # ウェブサイトでランキングを表示したいドメインを設定
+    DEMO_DOMAIN = "examplecompany.com" 
+    OUTPUT_JSON_FILE = "web_data.json"
     
     if not major_weights or not individual_rank_weights:
-        print("\n[エラー] 重みデータが計算されていないため、JSONエクスポートをスキップします。")
+        print("\n[ERROR] 重みデータが計算されていないため、JSONエクスポートをスキップします。")
     else:
-        # 予測ランキングを生成
+        # ウェブサイトに表示するためのデモランキングを生成
+        print(f"[STEP 4] '{DEMO_DOMAIN}' に対する予測ランキングを生成...")
         predicted_typos = typo_generator_ranked(
             domain=DEMO_DOMAIN,
             individual_weights=individual_rank_weights,
-            top_n=20 # サイトに表示する件数
+            top_n=20
         )
 
+        # JSONでキーとして扱えないタプルを文字列に変換
         converted_individual_weights = convert_internal_keys_to_str(individual_rank_weights)
 
-        OUTPUT_JSON_FILE = "web_data.json" # ファイル名を変更して区別
         web_data_export = {
             "demo_domain": DEMO_DOMAIN,
-            "predicted_typos": predicted_typos, # 予測ランキング結果を追加
-            "major_weights": major_weights, 
-            "individual_weights": converted_individual_weights, 
+            "predicted_typos": predicted_typos, # 予測ランキング結果
+            "major_weights": major_weights,    # 大分類の重み
+            "individual_weights": converted_individual_weights, # 個別ミスの重み
             "keyboard_adjacent": keyboard_adjacent,
             "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
             "homoglyph_pairs": [list(pair) for pair in homoglyph_pairs],
@@ -678,24 +683,6 @@ if __name__ == "__main__":
             print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")
 
     # --------------------------------------------------------------------------
-    # 5. ドメインランキング生成の実行
+    # 5. 元のインタラクティブな出力部分は削除またはコメントアウト
     # --------------------------------------------------------------------------
-    
-    correct_domain = input("\n 入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
-    
-    if major_weights and individual_rank_weights:
-        print("\n" + "=" * 78)
-        print(f"'{correct_domain}' に対する予測タイポドメインランキング:\n")
-        
-        # typo_generator_ranked 関数に、計算した個別ミス重み (individual_rank_weights) を渡す
-        # すべての引数をキーワードで指定し、順序依存性をなくす（より安全）
-        predicted_typos = typo_generator_ranked(
-            domain=correct_domain,
-            individual_weights=individual_rank_weights, # 新しいスコアの主軸となる個別重み
-            top_n=10
-        )
-        
-        for i, r in enumerate(predicted_typos):
-            print(f"{i+1}位 {r['typo']:<30} (スコア: {r['score']:.5f}, 距離: {r['distance']}, 原因: {r['causes']})")
-    else:
-        print("\n[エラー] 重みデータが計算されていないため、ランキング生成を実行できませんでした。")
+    # 例: print("■ 原因別集計と割合（重み）:\n") の表示部分や、input() の呼び出しは削除

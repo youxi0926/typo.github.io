@@ -1,124 +1,124 @@
 {
-    "demo_domain": "treasurefactory.co.jp",
+    "demo_domain": "examplecompany.com",
     "predicted_typos": [
         {
-            "typo": "treasurefactory,co.jp",
+            "typo": "examplecompany,com",
             "causes": "隣接キー誤打",
             "score": 0.041,
             "distance": 1
         },
         {
-            "typo": "treasurefactory.co,jp",
-            "causes": "隣接キー誤打",
-            "score": 0.041,
-            "distance": 1
-        },
-        {
-            "typo": "treasuurefactory.co.jp",
-            "causes": "二重入力",
-            "score": 0.021,
-            "distance": 1
-        },
-        {
-            "typo": "treasurefactory.co.jo",
+            "typo": "examolecompany.com",
             "causes": "隣接キー誤打",
             "score": 0.021,
             "distance": 1
         },
         {
-            "typo": "treaasurefactory.co.jp",
+            "typo": "examplecomoany.com",
+            "causes": "隣接キー誤打",
+            "score": 0.021,
+            "distance": 1
+        },
+        {
+            "typo": "exaamplecompany.com",
             "causes": "二重入力",
             "score": 0.02,
             "distance": 1
         },
         {
-            "typo": "treasurefaactory.co.jp",
+            "typo": "examplecompaany.com",
             "causes": "二重入力",
             "score": 0.02,
             "distance": 1
         },
         {
-            "typo": "treasurefactoory.co.jp",
+            "typo": "examplecoompany.com",
             "causes": "二重入力",
             "score": 0.018,
             "distance": 1
         },
         {
-            "typo": "treasurefactory.coo.jp",
+            "typo": "examplecompany.coom",
             "causes": "二重入力",
             "score": 0.018,
             "distance": 1
         },
         {
-            "typo": "treeasurefactory.co.jp",
+            "typo": "exampiecompany.com",
+            "causes": "ホモグリフ（視覚類似文字）",
+            "score": 0.017,
+            "distance": 1
+        },
+        {
+            "typo": "eexamplecompany.com",
             "causes": "二重入力",
             "score": 0.014,
             "distance": 1
         },
         {
-            "typo": "treaurefactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.014,
-            "distance": 1
-        },
-        {
-            "typo": "treasureefactory.co.jp",
+            "typo": "exampleecompany.com",
             "causes": "二重入力",
             "score": 0.014,
             "distance": 1
         },
         {
-            "typo": "teasurefactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.013,
-            "distance": 1
-        },
-        {
-            "typo": "treasuefactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.013,
-            "distance": 1
-        },
-        {
-            "typo": "treasurefactoy.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.013,
-            "distance": 1
-        },
-        {
-            "typo": "treasurefactory/co.jp",
+            "typo": "examplecompany/com",
             "causes": "隣接キー誤打",
             "score": 0.013,
             "distance": 1
         },
         {
-            "typo": "treasurefactory.co/jp",
+            "typo": "xamplecompany.com",
+            "causes": "入力漏れ",
+            "score": 0.011,
+            "distance": 1
+        },
+        {
+            "typo": "examplcompany.com",
+            "causes": "入力漏れ",
+            "score": 0.011,
+            "distance": 1
+        },
+        {
+            "typo": "examplecompay.com",
+            "causes": "入力漏れ",
+            "score": 0.011,
+            "distance": 1
+        },
+        {
+            "typo": "examplecompanny.com",
+            "causes": "二重入力",
+            "score": 0.011,
+            "distance": 1
+        },
+        {
+            "typo": "exmplecompany.com",
+            "causes": "入力漏れ",
+            "score": 0.01,
+            "distance": 1
+        },
+        {
+            "typo": "examplecompny.com",
+            "causes": "入力漏れ",
+            "score": 0.01,
+            "distance": 1
+        },
+        {
+            "typo": "exampecompany.com",
+            "causes": "入力漏れ",
+            "score": 0.009,
+            "distance": 1
+        },
+        {
+            "typo": "examplecmpany.com",
+            "causes": "入力漏れ",
+            "score": 0.009,
+            "distance": 1
+        },
+        {
+            "typo": "examplecompamy.com",
             "causes": "隣接キー誤打",
-            "score": 0.013,
-            "distance": 1
-        },
-        {
-            "typo": "trasurefactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.011,
-            "distance": 1
-        },
-        {
-            "typo": "treasurfactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.011,
-            "distance": 1
-        },
-        {
-            "typo": "tresurefactory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.01,
-            "distance": 1
-        },
-        {
-            "typo": "treasurefctory.co.jp",
-            "causes": "入力漏れ",
-            "score": 0.01,
+            "score": 0.009,
             "distance": 1
         }
     ],
