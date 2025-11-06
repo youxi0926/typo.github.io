@@ -638,25 +638,44 @@ if __name__ == "__main__":
     # analyze_for_rankingは、analyze_ngram_differencesの機能を含む、新しい統合関数を想定します。
     major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
 
-# 4. Web用データのエクスポート (JSON変換を適用)
-    converted_individual_weights = convert_internal_keys_to_str(individual_rank_weights)
-
-    OUTPUT_JSON_FILE = "data.json"
-    web_data_export = {
-        "major_weights": major_weights, 
-        "individual_weights": converted_individual_weights, 
-        "keyboard_adjacent": keyboard_adjacent,
-        "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
-        "homoglyph_pairs": [list(pair) for pair in homoglyph_pairs],
-        "homoglyphs_for_generator": HOMOGLYPHS_FOR_GENERATOR
-    }
+# --------------------------------------------------------------------------
+    # 4. Web用データのエクスポート (JSON変換を適用)
+    # --------------------------------------------------------------------------
     
-    try:
-        with open(OUTPUT_JSON_FILE, 'w', encoding='utf-8') as f:
-            json.dump(web_data_export, f, indent=4, ensure_ascii=False)
-        print(f"\n[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
-    except Exception as e:
-        print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")
+    # 【追加・変更】デモ用の予測ランキングをJSONに含めるための設定
+    # ※ サイトで表示したい主要なドメインをここで設定
+    DEMO_DOMAIN = "treasurefactory.co.jp" 
+    
+    if not major_weights or not individual_rank_weights:
+        print("\n[エラー] 重みデータが計算されていないため、JSONエクスポートをスキップします。")
+    else:
+        # 予測ランキングを生成
+        predicted_typos = typo_generator_ranked(
+            domain=DEMO_DOMAIN,
+            individual_weights=individual_rank_weights,
+            top_n=20 # サイトに表示する件数
+        )
+
+        converted_individual_weights = convert_internal_keys_to_str(individual_rank_weights)
+
+        OUTPUT_JSON_FILE = "web_data.json" # ファイル名を変更して区別
+        web_data_export = {
+            "demo_domain": DEMO_DOMAIN,
+            "predicted_typos": predicted_typos, # 予測ランキング結果を追加
+            "major_weights": major_weights, 
+            "individual_weights": converted_individual_weights, 
+            "keyboard_adjacent": keyboard_adjacent,
+            "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
+            "homoglyph_pairs": [list(pair) for pair in homoglyph_pairs],
+            "homoglyphs_for_generator": HOMOGLYPHS_FOR_GENERATOR
+        }
+        
+        try:
+            with open(OUTPUT_JSON_FILE, 'w', encoding='utf-8') as f:
+                json.dump(web_data_export, f, indent=4, ensure_ascii=False)
+            print(f"\n[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
+        except Exception as e:
+            print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")
 
     # --------------------------------------------------------------------------
     # 5. ドメインランキング生成の実行

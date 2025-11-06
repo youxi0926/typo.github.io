@@ -2,280 +2,51 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>防御的ドメイン生成サイト</title>
+    <title>ドメインタイポ分析結果</title>
     <style>
-        body { font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; }
-        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 20px; box-sizing: border-box; font-size: 16px; }
-        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; }
-        li { margin-bottom: 8px; border-left: 5px solid #007bff; padding: 5px 10px; list-style-type: none; }
-        strong { font-weight: bold; }
-        .score { font-family: monospace; color: #d9534f; }
-        #loadingMessage { color: orange; font-weight: bold; }
+        body { font-family: sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h2 { border-bottom: 2px solid #ccc; padding-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
     </style>
 </head>
 <body>
-    <h2>防御的ドメイン生成サイト</h2>
-    <p id="loadingMessage">データを読み込み中...</p>
-    <input type="text" id="domainInput" placeholder="ドメインを入力 (例: treasurefactory.co.jp)" disabled />
-    <button onclick="showTypos()" id="typoButton" disabled>タイポ候補を表示</button>
+    <h1>ドメインタイポ分析と予測結果</h1>
+    <p>このページは、Pythonスクリプトで生成された静的なJSONデータをもとに表示されています。</p>
 
-    <h3>タイポドメイン候補ランキング</h3>
-    <ul id="typoList"></ul>
+    <section id="prediction-ranking">
+        <h2>予測タイポドメインランキング</h2>
+        <p>（ドメイン: <span id="demo-domain-name"></span>）</p>
+        <table id="ranking-table">
+            <thead>
+                <tr>
+                    <th>順位</th>
+                    <th>タイポドメイン</th>
+                    <th>スコア</th>
+                    <th>DL距離</th>
+                    <th>主要な原因</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </section>
 
-    <script>
-        // ====================================================================
-        // 1. グローバル定数とデータ読み込み
-        // ====================================================================
-        let INDIVIDUAL_WEIGHTS = {}; // W_individual (Pythonで'po', 'a（空）'などの文字列に変換済み)
-        let KEYBOARD_ADJACENT = {};
-        let SYMMETRIC_KEY_PAIRS = []; 
-        let HOMOGLYPHS_FOR_GENERATOR = {}; 
+    <section id="cause-analysis">
+        <h2>原因別集計と割合（大分類）</h2>
+        <table id="major-weights-table">
+            <thead>
+                <tr>
+                    <th>原因</th>
+                    <th>割合（重み）</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </section>
 
-        const COMPOSITE_PENALTY_FACTOR = 0.5;
-        const EMPTY_CHAR = '（空）'; 
-
-        // --- データ読み込み ---
-        async function loadDataAndInitialize() {
-            try {
-                const response = await fetch('data.json');
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                
-                const data = await response.json();
-
-                INDIVIDUAL_WEIGHTS = data.individual_weights;
-                KEYBOARD_ADJACENT = data.keyboard_adjacent;
-                SYMMETRIC_KEY_PAIRS = data.symmetric_key_pairs; 
-                HOMOGLYPHS_FOR_GENERATOR = data.homoglyphs_for_generator;
-
-                document.getElementById('loadingMessage').textContent = 'データ読み込み完了。';
-                document.getElementById('domainInput').disabled = false;
-                document.getElementById('typoButton').disabled = false;
-                
-            } catch (error) {
-                document.getElementById('loadingMessage').innerHTML = '<strong>エラー: データ (data.json) の読み込みに失敗しました。</strong>Pythonでファイルを生成し、GitHubにプッシュしたか確認してください。';
-                console.error('データの読み込みエラー:', error);
-            }
-        }
-        
-        loadDataAndInitialize();
-
-        
-        // ====================================================================
-        // 2. JavaScriptヘルパー関数の移植 (最小限の機能)
-        // ====================================================================
-
-        function levenshteinDistance(s1, s2) {
-            // (省略: 既存のLevenshteinDistanceロジック)
-            const track = Array(s2.length + 1).fill(null).map(() => Array(s1.length + 1).fill(null));
-            for (let i = 0; i <= s1.length; i += 1) { track[0][i] = i; }
-            for (let j = 0; j <= s2.length; j += 1) { track[j][0] = j; }
-            for (let j = 1; j <= s2.length; j += 1) {
-                for (let i = 1; i <= s1.length; i += 1) {
-                    const indicator = s1[i - 1] === s2[j - 1] ? 0 : 1;
-                    track[j][i] = Math.min(
-                        track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator
-                    );
-                }
-            }
-            return track[s2.length][s1.length];
-        }
-
-        function identifySingleReplacement(correct, typo) {
-            // (省略: 既存のidentifySingleReplacementロジック)
-            if (correct.length === typo.length) {
-                let diffIndex = -1;
-                for (let i = 0; i < correct.length; i++) {
-                    if (correct[i] !== typo[i]) {
-                        if (diffIndex !== -1) return ['', ''];
-                        diffIndex = i;
-                    }
-                }
-                return diffIndex !== -1 ? [correct[diffIndex], typo[diffIndex]] : ['', ''];
-            }
-            if (Math.abs(correct.length - typo.length) === 1) {
-                if (correct.length < typo.length) { 
-                    for(let i=0; i<typo.length; i++) {
-                        if (typo.slice(0, i) + typo.slice(i + 1) === correct) return [EMPTY_CHAR, typo[i]];
-                    }
-                } else { 
-                     for(let i=0; i<correct.length; i++) {
-                        if (correct.slice(0, i) + correct.slice(i + 1) === typo) return [correct[i], EMPTY_CHAR];
-                    }
-                }
-            }
-            return ['', '']; 
-        }
-
-        // ====================================================================
-        // 3. 予測生成とスコアリング (W_individual を主軸に修正)
-        // ====================================================================
-
-        function generateTyposRanked(domain, individualWeights) {
-            let variants = new Map(); 
-
-            for (let i = 0; i < domain.length; i++) {
-                const c = domain[i];
-                const cLower = c.toLowerCase();
-
-                // 1. 入力漏れ (Deletion)
-                const delTy = domain.slice(0, i) + domain.slice(i + 1);
-                variants.set(delTy, (variants.get(delTy) || new Set()).add(c === '.' ? "ドット抜け" : "入力漏れ"));
-
-                // 2. 二重入力 (Insertion/Repetition)
-                const dupTy = domain.slice(0, i) + c + c + domain.slice(i + 1);
-                variants.set(dupTy, (variants.get(dupTy) || new Set()).add("二重入力"));
-
-                // 3. 隣接キー誤打 (Substitution)
-                if (KEYBOARD_ADJACENT[cLower]) {
-                    const adjChars = KEYBOARD_ADJACENT[cLower];
-                    for (const adj of Array.isArray(adjChars) ? adjChars : adjChars.split('')) {
-                        const adjTy = domain.slice(0, i) + adj + domain.slice(i + 1);
-                        variants.set(adjTy, (variants.get(adjTy) || new Set()).add("隣接キー誤打"));
-                    }
-                }
-                
-                // 4. ホモグリフ・視覚類似文字 (Substitution)
-                if (HOMOGLYPHS_FOR_GENERATOR[cLower]) {
-                    const hgChars = HOMOGLYPHS_FOR_GENERATOR[cLower];
-                    for (const g of Array.isArray(hgChars) ? hgChars : [hgChars]) {
-                         const typo = domain.slice(0, i) + g + domain.slice(i + 1);
-                         variants.set(typo, (variants.get(typo) || new Set()).add("ホモグリフ（視覚類似文字）"));
-                    }
-                }
-                
-                // 5. 左右対称キー誤打 (Substitution)
-                SYMMETRIC_KEY_PAIRS.forEach(pair => {
-                    const [a, b] = pair;
-                    if (cLower === a || cLower === b) {
-                        const replacement = cLower === a ? b : a;
-                        const typo = domain.slice(0, i) + replacement + domain.slice(i + 1);
-                        variants.set(typo, (variants.get(typo) || new Set()).add("左右対称キー誤打"));
-                    }
-                });
-
-                // 6. 入力順序ミス (Transposition)
-                if (i < domain.length - 1) {
-                    const swapTy = domain.slice(0, i) + domain[i + 1] + domain[i] + domain.slice(i + 2);
-                    variants.set(swapTy, (variants.get(swapTy) || new Set()).add("入力順序ミス"));
-                }
-            }
-
-            // スコアリングとランキング
-            let rankedResults = [];
-            for (let [typo, data] of variants.entries()) {
-                if (typo === domain) continue;
-                
-                let finalScore = 0;
-                let numCauses = data.causes.size;
-                
-                const [c1, c2] = identifySingleReplacement(domain, typo);
-                
-                // 1. 個別ミス重み (W_individual) の適用
-                data.causes.forEach(cause => {
-                    let W_individual = 0.0;
-                    let keyStr = '';
-
-                    // キーの構築: Pythonの集計ロジックに合わせる
-                    if (cause === "入力順序ミス") {
-                        // Python側でget_transposed_pairを使う前提のため、JSではW=0になる可能性が高い
-                         // 🚨 W_individualの計算は、Pythonで実装したget_transposed_pairの結果に依存します
-                         // 仮にPython側で文字列キー 'a b -> b a'が生成されたと想定してキーを構築
-                         const pair = [domain.charAt(i), domain.charAt(i + 1)]; // 簡易的な推測
-                         keyStr = `${pair[0]} ${pair[1]} -> ${pair[1]} ${pair[0]}`;
-                    } else if (c1 && c2 && c1 !== EMPTY_CHAR && c2 !== EMPTY_CHAR) {
-                        // 置換系
-                        keyStr = c1 + c2;
-                    } else if (c2 === EMPTY_CHAR && c1) {
-                        // 削除系
-                        keyStr = c1 + EMPTY_CHAR;
-                    } else if (c1 === EMPTY_CHAR && c2) {
-                        // 挿入系
-                        keyStr = EMPTY_CHAR + c2;
-                    }
-                    
-                    if (keyStr && individualWeights[cause]) {
-                         // 内部重みの参照 (JSONのキーは文字列なので直接参照)
-                         W_individual = individualWeights[cause][keyStr] || 0.0;
-                         
-                         // 逆順チェック (置換系のみ)
-                         if (W_individual === 0.0 && keyStr.length === 2 && keyStr.includes(EMPTY_CHAR) === false) {
-                            W_individual = individualWeights[cause][keyStr.split('').reverse().join('')] || 0.0;
-                         }
-                    }
-                    
-                    finalScore += W_individual;
-                });
-                
-
-                // 2. 複合ミス ペナルティ
-                if (numCauses > 1) {
-                    finalScore *= COMPOSITE_PENALTY_FACTOR; 
-                }
-                
-                // 3. ボーナス (極小に維持)
-                if (data.causes && (data.causes.has("入力漏れ") || data.causes.has("二重入力") || data.causes.has("ドット抜け"))) {
-                     finalScore += 0.000001; 
-                }
-
-                const distance = levenshteinDistance(domain, typo);
-                if (distance > 4) continue; 
-
-                rankedResults.push({
-                    typo: typo,
-                    causes: Array.from(data.causes).join('・'),
-                    score: finalScore,
-                    distance: distance
-                });
-            }
-
-            rankedResults.sort((a, b) => b.score - a.score);
-            return rankedResults.slice(0, 10);
-        }
-
-        // --- UI操作ロジック ---
-
-        function extractDomain(input) {
-            return input.split('@').length > 1 ? input.split('@')[1] : input;
-        }
-
-        function showTypos() {
-            if (Object.keys(INDIVIDUAL_WEIGHTS).length === 0) {
-                 document.getElementById('typoList').innerHTML = "<li>データを待機中です...</li>";
-                 return;
-            }
-            
-            const inputElement = document.getElementById("domainInput");
-            const inputDomain = inputElement.value.trim();
-            const domain = extractDomain(inputDomain);
-
-            const list = document.getElementById("typoList");
-            list.innerHTML = "";
-
-            if (!domain) {
-                list.innerHTML = "<li>ドメインを入力してください。</li>";
-                return;
-            }
-
-            const typos = generateTyposRanked(domain, INDIVIDUAL_WEIGHTS);
-
-            typos.forEach((t, index) => {
-                const li = document.createElement("li");
-                
-                const fullAddress = inputDomain.includes('@') 
-                    ? inputDomain.replace(domain, t.typo) 
-                    : t.typo;
-                
-                li.innerHTML = `
-                    <strong>${index + 1}位: ${fullAddress}</strong>
-                    (スコア: <span class="score">${t.score.toFixed(6)}</span>, 距離: ${t.distance}, 原因: ${t.causes})
-                `;
-                list.appendChild(li);
-            });
-            
-            if (typos.length === 0) {
-                 list.innerHTML = "<li>候補は見つかりませんでした。</li>";
-            }
-        }
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
