@@ -66,7 +66,6 @@ if __name__ == "__main__":
         threshold=4
     )
 
-
 # ====================================================================
 # --------原因別分類-----------
 
@@ -194,10 +193,6 @@ def identify_single_replacement(correct, typo):
     return ('', '') # 複合または非距離1ミス
 
 
-# --------------------------------------------------------------------------
-# ⭐ 欠落していた分析関数 analyze_for_ranking の定義
-# --------------------------------------------------------------------------
-
 def analyze_for_ranking(csv_path):
     """CSVを読み込み、ランキング用の個別ミス重み (W_individual) を計算する。"""
     df = pd.read_csv(csv_path)
@@ -314,10 +309,6 @@ def analyze_ngram_differences(csv_path):
 
         diffs = extract_ngram_diffs(correct, typo)
 
-        # for cause in causes:  #各タイポの原因（例: 隣接キー誤打、二重入力）ごとに処理を繰り返す
-        #     for c1, c2 in diffs:  #そのタイポで発生した各差分パターン（例: a → o, （空） → u）ごとに処理を繰り返す
-        #         cause_diff_counter[cause][(c1, c2)] += 1
-
         for cause in causes:
             # 入力順序ミスの場合は既に集計済みのため、スキップ
             if cause == "入力順序ミス":
@@ -383,12 +374,12 @@ def analyze_ngram_differences(csv_path):
         
         # 入力順序ミスの場合、キーは文字列なので、一つの変数(key_pair)で受け取る
         if cause == "入力順序ミス":
-            for key_pair, count in counter.most_common(5): # key_pair は 'e r -> r e'
+            for key_pair, count in counter.most_common(): # key_pair は 'e r -> r e'
                 print(f"  {key_pair:<10}: {count}件")
         
         # それ以外の原因の場合、キーは(c1, c2)のタプルなので、(c1, c2)で受け取る
         else:
-            for (c1, c2), count in counter.most_common(5): 
+            for (c1, c2), count in counter.most_common(): 
                 print(f"  {c1} → {c2:<10}: {count}件")
         
 
@@ -618,30 +609,12 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     
     # analyze_for_rankingを実行し、大分類の重みと個別ミスの重みの両方を受け取る
-    # analyze_for_rankingは、analyze_ngram_differencesの機能を含む、新しい統合関数を想定します。
     major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
 
 
     # --------------------------------------------------------------------------
     # 4. ドメインランキング生成の実行
     # --------------------------------------------------------------------------
-
-    def convert_internal_keys_to_str(individual_weights: Dict[str, Dict[Tuple[Any, Any], float]]) -> Dict[str, Dict[str, float]]:
-        converted_weights = {}
-        for cause, inner_dict in individual_weights.items():
-            converted_inner_dict = {}
-            for key, score in inner_dict.items():
-                # キーがタプルであれば、文字列に変換
-                if isinstance(key, tuple):
-                    key_str = "".join(key) 
-                else:
-                    # 入力順序ミスの特殊文字列キー (例: 'a b -> b a') はそのまま
-                    key_str = key 
-                
-                # JSONにエクスポートする際はスコアを丸めても良いが、ここではそのまま
-                converted_inner_dict[key_str] = score
-            converted_weights[cause] = converted_inner_dict
-        return converted_weights
     
     correct_domain = input("\n 入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
     
@@ -661,27 +634,3 @@ if __name__ == "__main__":
             print(f"{i+1}位 {r['typo']:<30} (スコア: {r['score']:.5f}, 距離: {r['distance']}, 原因: {r['causes']})")
     else:
         print("\n[エラー] 重みデータが計算されていないため、ランキング生成を実行できませんでした。")
-
-
-    if not individual_rank_weights:
-        print("\n[エラー] 重みデータが計算されなかったため、JSONエクスポートをスキップします。")
-    else:
-        # 4. Web用データのエクスポート (JSON変換を適用)
-        converted_individual_weights = convert_internal_keys_to_str(individual_rank_weights)
-
-        OUTPUT_JSON_FILE = "data.json"
-        web_data_export = {
-            "individual_weights": converted_individual_weights, 
-            "keyboard_adjacent": keyboard_adjacent,
-            "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
-            "homoglyph_pairs": [list(pair) for pair in homoglyph_pairs],
-            "homoglyphs_for_generator": HOMOGLYPHS_FOR_GENERATOR
-        }
-        
-        try:
-            with open(OUTPUT_JSON_FILE, 'w', encoding='utf-8') as f:
-                # ensure_ascii=False で日本語文字（「（空）」など）をそのまま出力
-                json.dump(web_data_export, f, indent=4, ensure_ascii=False)
-            print(f"\n[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
-        except Exception as e:
-            print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")

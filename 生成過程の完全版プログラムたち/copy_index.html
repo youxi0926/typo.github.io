@@ -17,9 +17,9 @@
 
     <h1>タイポドメイン予測ランキング</h1>
     <p>ドメイン名を入力し、予測されるタイポドメイン候補をランキング形式で表示します。</p>
-
+    <p>（タイポドメインとは：ユーザのタイプミスを予測したドメインのこと）</p>
     <input type="text" id="domainInput" placeholder="例: gmail.com">
-    <button onclick="generateRanking()">タイポドメイン候補を生成</button>
+    <button onclick="generateRanking()">タイポドメインを生成</button>
 
     <hr>
 
@@ -71,7 +71,7 @@
                 return;
             }
 
-            const topN = 20; //上位何件表示するか
+            const topN = 10; //上位何件表示するか
             const predictedTypos = typoRanker.typoGeneratorRanked(domain, topN);
 
             if (predictedTypos.length === 0) {

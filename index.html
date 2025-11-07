@@ -27,19 +27,16 @@
     <div id="rankingOutput">
         <p>ドメイン名を入力して「タイポドメイン候補を生成」をクリックしてください。</p>
     </div>
-
-    <script src="typo_ranking.js"></script>
+    
+    <script src="typo_ranking.js"></script> 
 
     <script>
         let typoRanker = null;
-
-        /**
-         * Pythonで分析・エクスポートされたJSONデータを読み込み、TypoRankerを初期化
-         */
+        
+        //Pythonで分析・エクスポートされたJSONデータを読み込み、TypoRankerを初期化
         async function initRanker() {
             try {
-                // NOTE: 'data.json' は Python スクリプトで生成されたファイルである必要があります
-                const response = await fetch('data.json'); 
+                const response = await fetch('data.json'); //最新pythonコンパイルで生成したdata.jsonファイルを読み込み
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -53,9 +50,6 @@
             }
         }
 
-        /**
-         * 入力に基づいてランキングを生成し、HTMLに表示する
-         */
         function generateRanking() {
             if (!typoRanker) {
                 alert("重みデータがまだロードされていません。しばらく待ってから再度お試しください。");
