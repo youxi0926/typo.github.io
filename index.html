@@ -2,15 +2,32 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>予測タイポドメインランキング</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 20px; box-sizing: border-box; }
-        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-        .ranking-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-        .rank { font-weight: bold; font-size: 1.2em; color: #007bff; margin-right: 10px; }
-        .typo { font-weight: bold; font-size: 1.1em; color: #2e2c2c; }
-        .score-info { font-size: 0.9em; color: #66707a; }
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f8f8f8; }
+        h1 { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px; margin-bottom: 20px; }
+        h2 { color: #333; margin-top: 30px; margin-bottom: 15px; }
+        input[type="text"] { 
+            width: 100%; padding: 12px; margin-bottom: 20px; box-sizing: border-box; 
+            border: 2px solid #ccc; border-radius: 8px; font-size: 1.1em;
+        }
+        button { 
+            padding: 10px 15px; background-color: #007bff; color: white; border: none; 
+            cursor: pointer; border-radius: 8px; transition: background-color 0.3s;
+            font-weight: bold;
+        }
+        button:hover { background-color: #0056b3; }
+        .ranking-item { 
+            border: 1px solid #e0e0e0; padding: 15px; margin-bottom: 12px; border-radius: 8px; 
+            background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .rank { font-weight: bold; font-size: 1.4em; color: #007bff; margin-right: 15px; }
+        .typo { font-weight: bold; font-size: 1.2em; color: #333; display: inline-block; margin-right: 15px; }
+        .score-info { font-size: 0.9em; color: #555; margin-top: 5px; }
+        .score-val { color: #dc3545; font-weight: 600; }
+        .cost-val { color: #28a745; font-weight: 600; }
+        .loading { color: orange; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -18,14 +35,16 @@
     <h1>タイポドメイン予測ランキング</h1>
     <p>ドメイン名を入力し、予測されるタイポドメイン候補をランキング形式で表示します。</p>
     <p>（タイポドメインとは：ユーザのタイプミスを予測したドメインのこと）</p>
+    
     <input type="text" id="domainInput" placeholder="例: gmail.com">
     <button onclick="generateRanking()">タイポドメインを生成</button>
 
     <hr>
 
     <h2>予測結果</h2>
+    <div id="loadingMessage" class="loading hidden">分析データをロード中...</div>
     <div id="rankingOutput">
-        <p>ドメイン名を入力して「タイポドメイン候補を生成」をクリックしてください。</p>
+        <p>ドメイン名を入力して「タイポドメインを生成」をクリックしてください。</p>
     </div>
     
     <script src="typo_ranking.js"></script> 
@@ -33,19 +52,24 @@
     <script>
         let typoRanker = null;
         
-        //Pythonで分析・エクスポートされたJSONデータを読み込み、TypoRankerを初期化
         async function initRanker() {
+            const loading = document.getElementById('loadingMessage');
+            loading.classList.remove('hidden');
             try {
-                const response = await fetch('data.json'); //最新pythonコンパイルで生成したdata.jsonファイルを読み込み
+                // 最新pythonコンパイルで生成したdata.jsonファイルを読み込み
+                const response = await fetch('data.json'); 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
                 typoRanker = new TypoRanker(data);
                 console.log("TypoRanker 初期化完了。重みデータをロードしました。");
+                loading.textContent = "✅ 分析データロード完了。";
+                setTimeout(() => loading.classList.add('hidden'), 2000);
             } catch (e) {
                 const output = document.getElementById('rankingOutput');
-                output.innerHTML = `<p style="color: red;">[エラー] 重みデータ (data.json) の読み込みに失敗しました。Pythonスクリプトを実行してファイルが生成されているか確認してください。<br>エラー詳細: ${e.message}</p>`;
+                output.innerHTML = `<p style="color: red; font-weight: bold;">[エラー] 重みデータ (data.json) の読み込みに失敗しました。Pythonスクリプトを実行してファイルが生成されているか確認してください。<br>エラー詳細: ${e.message}</p>`;
+                loading.classList.add('hidden');
                 console.error("JSONロードエラー:", e);
             }
         }
@@ -65,23 +89,25 @@
                 return;
             }
 
-            const topN = 10; //上位何件表示するか
+            const topN = 20; 
             const predictedTypos = typoRanker.typoGeneratorRanked(domain, topN);
 
             if (predictedTypos.length === 0) {
-                outputDiv.innerHTML = `<p><strong>${domain}</strong> に対するタイポ候補は見つかりませんでした。</p>`;
+                outputDiv.innerHTML = `<p><strong>${domain}</strong> に対する有力なタイポ候補は見つかりませんでした。</p>`;
                 return;
             }
 
             let html = `<h3>'${domain}' に対する予測ランキング (上位 ${predictedTypos.length} 件)</h3>`;
 
             predictedTypos.forEach((r, i) => {
+                // 距離(distance)と原因(causes)を除外した表示
                 html += `
                     <div class="ranking-item">
                         <span class="rank">${i + 1}位</span> 
                         <span class="typo">${r.typo}</span>
                         <div class="score-info">
-                            スコア: ${r.score.toFixed(6)} | 距離: ${r.distance} | 原因: ${r.causes}
+                            スコア: <span class="score-val">${r.score.toFixed(7)}</span> | 
+                            費用: <span class="cost-val">${r.cost}</span>
                         </div>
                     </div>
                 `;

@@ -1,0 +1,123 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 20px;
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    color: #007bff;
+    border-bottom: 2px solid #e0e0e0;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+h2 {
+    color: #28a745;
+    margin-top: 30px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+#domain-input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+#generate-button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+#generate-button:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+#generate-button:disabled {
+    background-color: #a0c3e7;
+    cursor: not-allowed;
+}
+
+#status {
+    margin-bottom: 15px;
+    color: #6c757d;
+}
+
+.typo-list {
+    list-style: none;
+    padding: 0;
+}
+
+.typo-list li {
+    background-color: #e9ecef;
+    margin-bottom: 8px;
+    padding: 12px 15px;
+    border-radius: 4px;
+    border-left: 5px solid #28a745;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.rank {
+    font-weight: bold;
+    color: #dc3545;
+    min-width: 40px;
+}
+
+.typo-domain {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #333;
+    flex-grow: 1;
+    margin-left: 10px;
+}
+
+.details {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-left: 10px;
+}
+
+.causes {
+    font-weight: 500;
+    color: #007bff;
+}
+
+.cost {
+    font-style: italic;
+}
+
+.error {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.info {
+    color: #17a2b8;
+    font-style: italic;
+    margin-top: -10px;
+}
