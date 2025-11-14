@@ -120,7 +120,7 @@ class TypoRanker {
                 return this.tldCosts[tld];
             }
         }
-        return "約1,500円/年 (その他 gTLD（予測）)";
+        return "費用不明";
     }
 
     // ======================================================================
@@ -297,9 +297,21 @@ class TypoRanker {
             return a.distance - b.distance;
         });
 
-        const finalRankedResults = rankedResults.filter(
-             r => !r.typo.includes(',') && !r.typo.includes('/')
-        );
+        const finalRankedResults = rankedResults.filter(r => {
+            const labels = r.typo.split('.');
+            
+            // 1. カンマ/スラッシュを含むタイポは引き続き除外
+            if (r.typo.includes(',') || r.typo.includes('/') || r.typo.includes('-')) {
+                return false;
+            }
+            
+            // 2. 1文字ラベルのチェック (TLD規則に基づき、いずれかのラベルが1文字の場合は除外)
+            // 例: a.co.jp -> [a, co, jp] -> 'a' の長さが 1 なので除外
+            // ただし、最後のラベル (TLD) が 'c' や 'j' などの1文字の場合は、それは別のルールなので、ここでは全ラベルをチェック。
+            const hasSingleCharLabel = labels.some(label => label.length === 1);
+            
+            return !hasSingleCharLabel;
+        });
 
         return finalRankedResults.slice(0, topN);
     }

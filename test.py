@@ -26,11 +26,10 @@ symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')]
 homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')] 
 HOMOGLYPHS_FOR_GENERATOR = {'1': ['l'], '0': ['o'], 'i': ['l'], 'l': ['i'], 'r': ['m'], 'b': ['d'], 'd': ['b']} 
 TLD_COSTS = {
-    ".co.jp": "7,678円/年", 
+    ".co.jp": "3,960円/年", 
     ".jp": "3,124円/年",
     ".com": "1,408円/年",
     ".net": "1,628円/年",
-    ".co.jo": "費用不明 (未登録TLD/要確認)", 
 }
 
 # ドメイン部抽出
@@ -222,7 +221,7 @@ def calculate_positional_freqs(csv_path):
 def extract_tld_and_cost(domain: str) -> str:
     for tld, cost in TLD_COSTS.items():
         if domain.endswith(tld): return cost
-    return "約1,500円/年 (その他 gTLD（予測）)"
+    return "費用不明"
 
 # 全体原因割合計算
 def get_cause_ratios(csv_path):
