@@ -1693,10 +1693,11 @@
     "total_dl1_count": 1641,
     "K_POSITION_BOOST": 0.5,
     "TLD_COSTS": {
-        ".co.jp": "3,960円/年",
+        ".co.jp": "7,678円/年",
         ".jp": "3,124円/年",
         ".com": "1,408円/年",
-        ".net": "1,628円/年"
+        ".net": "1,628円/年",
+        ".co.jo": "費用不明 (未登録TLD/要確認)"
     },
     "keyboard_adjacent": {
         "q": "wa",

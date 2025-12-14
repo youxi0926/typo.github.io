@@ -543,12 +543,12 @@ def analyze_ngram_differences(csv_path):
         
         # TLDミスと入力順序ミスの場合、キーは文字列
         if cause in {"TLDミス", "入力順序ミス"}:
-            for key_pair, count in counter.most_common(5): # key_pair は 'e r -> r e'
+            for key_pair, count in counter.most_common(20): # key_pair は 'e r -> r e'
                 print(f"  {key_pair:<10}: {count}件")
         
         # それ以外の原因の場合、キーは(c1, c2)のタプルなので、(c1, c2)で受け取る
         else:
-            for (c1, c2), count in counter.most_common(5): 
+            for (c1, c2), count in counter.most_common(20): 
                 print(f"  {c1} → {c2:<10}: {count}件")
 
 
