@@ -8,6 +8,7 @@ import difflib
 from collections import defaultdict, Counter
 import json
 from typing import Dict, Tuple, Any, List, Set
+import urllib.request
 
 # ====================================================================-
 # --------タイポドメイン抽出----------
@@ -71,7 +72,7 @@ keyboard_adjacent = { # キーボード隣接キーマップ
 }
 
 symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称配置キー誤打（例: f ↔ j）
-homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]  # # ホモグラフ, キリル文字の'a'など
+homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]   # # ホモグラフ, キリル文字の'a'など
 
 def keyboard_adjacent_check(c1, c2):
     return c1.lower() in keyboard_adjacent and c2.lower() in keyboard_adjacent[c1.lower()]
@@ -544,12 +545,12 @@ def analyze_ngram_differences(csv_path):
         # TLDミスと入力順序ミスの場合、キーは文字列
         if cause in {"TLDミス", "入力順序ミス"}:
             for key_pair, count in counter.most_common(20): # key_pair は 'e r -> r e'
-                print(f"  {key_pair:<10}: {count}件")
+                print(f"  {key_pair:<10}: {count}件")
         
         # それ以外の原因の場合、キーは(c1, c2)のタプルなので、(c1, c2)で受け取る
         else:
             for (c1, c2), count in counter.most_common(20): 
-                print(f"  {c1} → {c2:<10}: {count}件")
+                print(f"  {c1} → {c2:<10}: {count}件")
 
 
 #---------タイポ原因別集計と割合（重み）--------
@@ -596,6 +597,40 @@ def typo_domain_ranking_with_reason_jp(input_path, correct_domain, max_distance=
     print()
 
 # ===================================================================
+# -------- TLD有効性チェック用 --------
+# ===================================================================
+
+# 有効なTLDのセット（初期値として主要なものを入れておきますが、実行時にIANAから最新を取得します）
+VALID_TLDS = {
+    'com', 'net', 'org', 'edu', 'gov', 'mil', 'int', 'jp', 'co.jp', 'ne.jp',
+    'ai', 'io', 'co', 'me', 'info', 'biz', 'us', 'uk', 'ca', 'de', 'fr', 'au',
+    'ntt', 'google', 'amazon', 'shop', 'blog', 'tech', 'dev', 'app', 'xyz'
+}
+
+def load_iana_tlds():
+    """IANAの公式サイトから最新のTLDリストを取得して更新する"""
+    url = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            content = response.read().decode('utf-8')
+            for line in content.splitlines():
+                if not line.startswith('#') and line.strip():
+                    VALID_TLDS.add(line.strip().lower())
+        print(f"[INFO] 最新のTLDリストを取得しました（総数: {len(VALID_TLDS)}個）")
+    except Exception as e:
+        print(f"[WARN] TLDリストの取得に失敗しました。デフォルトのリストを使用します: {e}")
+
+def is_existing_tld(domain: str) -> bool:
+    """ドメインのTLD（最後のドット以降）が実在するか判定する"""
+    # 最後のドット以降を取得 (例: example.co.jp -> jp, hir.ai -> ai)
+    parts = domain.split('.')
+    if len(parts) < 2:
+        return False
+    
+    tld = parts[-1].lower()
+    return tld in VALID_TLDS
+
+# ===================================================================
 # --------予測型タイポドメイン生成関数----------
 # ===================================================================
 
@@ -603,7 +638,7 @@ HOMOGLYPHS_FOR_GENERATOR = {'1': ['l'], '0': ['o'], 'i': ['l'], 'l': ['i'], 'r':
 TLD_ALTERNATIVES = {'com': ['co.jp', 'net'], 'co.jp': ['com', 'co'], 'net': ['com', 'co.jp']} # tld例
 
 symmetric_key_pairs = [('f', 'j'), ('d', 'k'), ('s', 'l'), ('a', ';')] # 対称配置キー誤打（例: f ↔ j）
-homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]  # # ホモグラフ, キリル文字の'a'など
+homoglyph_pairs = [('1', 'l'), ('0', 'o'), ('i', 'l'), ('rn', 'm'), ('а', 'a'), ('b', 'd')]   # # ホモグラフ, キリル文字の'a'など
 
 def typo_generator_ranked(domain: str, individual_weights: dict, positional_freqs: dict, top_n: int = 30):
     variants = defaultdict(lambda: [set(), 0.0]) # {typo_domain: [causes_set, score]}
@@ -659,11 +694,9 @@ def typo_generator_ranked(domain: str, individual_weights: dict, positional_freq
         swapped = domain[:i] + domain[i+1] + domain[i] + domain[i+2:]
         variants[swapped][0].add("入力順序ミス")
 
-    if '.' in domain:
-        for i, char in enumerate(domain):
-            if char == '.':
-                dotless = domain[:i] + domain[i+1:]
-                variants[dotless][0].add("ドット抜け")
+    # 【削除】ドット抜けの生成ロジックを削除しました。
+    # 分析(classify_edit_ops_japanese)ではカウントされますが、
+    # ランキング生成のための候補としては作成されません。
 
     # 8. TLDミス (TLD Mismatch)
     base_domain, *tlds = domain.split('.')
@@ -699,11 +732,11 @@ def typo_generator_ranked(domain: str, individual_weights: dict, positional_freq
         for cause in causes:
             W_individual = 0.0 # 見つからなかった場合のデフォルト値
             
-            # --- TLDミス (x10 増幅) ---
+            # --- TLDミス (x10 倍　増幅) ---
             if cause == "TLDミス" and is_tld_m:
                 key = tld_diff_str
                 W_individual = individual_weights.get(cause, {}).get(key, 0.0)
-                final_score += W_individual * 10 
+                final_score += W_individual * 5
 
             # --- 入力順序ミス ---
             elif cause == "入力順序ミス":
@@ -794,8 +827,7 @@ def typo_generator_ranked(domain: str, individual_weights: dict, positional_freq
     # スコア降順、距離昇順でランキング
     ranked_results.sort(key=lambda x: (x['score'], -x['distance']), reverse=True)
 
-    # ... (カンマ/スラッシュを含むタイポの除外は省略 - 変更なし)
-
+    # カンマ/スラッシュを含むタイポの除外
     final_ranked_results = [
         r for r in ranked_results 
         if ',' not in r['typo'] and '/' not in r['typo']
@@ -804,29 +836,38 @@ def typo_generator_ranked(domain: str, individual_weights: dict, positional_freq
     return final_ranked_results[:top_n]
 
 # ===================================================================
-# -------- ドメイン費用計算ヘルパー関数（追加）----------
+# -------- TLD有効性チェック用 --------
 # ===================================================================
 
-# お名前ドットコムなどのドメイン登録サービスを参考に、年間更新費用（概算）を定義
-# 初年度はキャンペーン価格で0円〜になることが多いが、ここでは長期的な維持費用として更新費用を採用
-TLD_COSTS = {
-    ".co.jp": "7,678円/年", # お名前.comの一般更新価格を参考に設定
-    ".jp": "3,124円/年",
-    ".com": "1,408円/年",
-    ".net": "1,628円/年",
-    ".co.jo": "費用不明 (未登録TLD/要確認)", # .co.jo のようなミススペルは不明とする
+# 有効なTLDのセット（初期値として主要なものを入れておきますが、実行時にIANAから最新を取得します）
+VALID_TLDS = {
+    'com', 'net', 'org', 'edu', 'gov', 'mil', 'int', 'jp', 'co.jp', 'ne.jp',
+    'ai', 'io', 'co', 'me', 'info', 'biz', 'us', 'uk', 'ca', 'de', 'fr', 'au',
+    'ntt', 'google', 'amazon', 'shop', 'blog', 'tech', 'dev', 'app', 'xyz'
 }
 
-def extract_tld_and_cost(domain: str) -> str:
-    """ドメインの末尾からTLDを判断し、推定コストを返す"""
+def load_iana_tlds():
+    """IANAの公式サイトから最新のTLDリストを取得して更新する"""
+    url = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            content = response.read().decode('utf-8')
+            for line in content.splitlines():
+                if not line.startswith('#') and line.strip():
+                    VALID_TLDS.add(line.strip().lower())
+        print(f"[INFO] 最新のTLDリストを取得しました（総数: {len(VALID_TLDS)}個）")
+    except Exception as e:
+        print(f"[WARN] TLDリストの取得に失敗しました。デフォルトのリストを使用します: {e}")
+
+def is_existing_tld(domain: str) -> bool:
+    """ドメインのTLD（最後のドット以降）が実在するか判定する"""
+    # 最後のドット以降を取得 (例: example.co.jp -> jp, hir.ai -> ai)
+    parts = domain.split('.')
+    if len(parts) < 2:
+        return False
     
-    # 複数階層TLD (.co.jp) から順にチェック
-    for tld, cost in TLD_COSTS.items():
-        if domain.endswith(tld):
-            return cost
-    
-    # その他のgTLDの一般的な更新費用を代替として使用
-    return "約1,500円/年 (その他 gTLD（予測）)"
+    tld = parts[-1].lower()
+    return tld in VALID_TLDS
 
 # --------------------------------------------------------------------------
 # ⭐ タプルキーをJSONフレンドリーな文字列に変換するヘルパー関数 (W_individual用)
@@ -860,62 +901,48 @@ def convert_positional_freqs_to_json(positional_freqs: Dict) -> Dict:
             converted[cause][char] = dict(pos_counter) 
     return converted
 
-
 # ===================================================================
-# --------実行部分----------
+# --------実行部分 (シンプル出力版) ----------
 if __name__ == "__main__":
-    correct_domain = input("\n入力されたドメインのタイポランキングを表示（例: treasurefactory.co.jp）: ").strip()
-    typo_domain_ranking_with_reason_jp("filtered_domain_typos_dl4.csv", correct_domain)
-
+    
     # --------------------------------------------------------------------------
-    # 必須ファイルパス設定
+    # 0. 必須ファイルパス設定
+    # --------------------------------------------------------------------------
     INPUT_FILE = "filtered_address.csv"
     DL4_FILTERED_FILE = "filtered_domain_typos_dl4.csv"
     CAUSES_CSV_FILE = "domaintypos_dl4_causes2.csv"
     DL_THRESHOLD = 4
+    OUTPUT_JSON_FILE = "data.json"
+    TLD_PRICES_FILE = "tld_prices.json"
 
-    # 1. タイポの抽出とフィルタリング (中間ファイル生成)
-    filter_domain_differences_with_mismatch(INPUT_FILE, DL4_FILTERED_FILE, DL_THRESHOLD)
+    print(f"[INFO] 分析を開始します...")
 
-    # 2. 原因分類を付与しCSVに出力
-    append_typo_causes(DL4_FILTERED_FILE, CAUSES_CSV_FILE)
-    
     # --------------------------------------------------------------------------
-    # 3. 分析の実行: 個別ミスの重み (W_individual) と位置別頻度の計算
+    # 1. & 2. タイポ抽出と原因分類 (ファイル生成)
     # --------------------------------------------------------------------------
-    
-    # analyze_for_rankingを実行し、大分類の重みと個別ミスの重みの両方を受け取る
+    # ※ JSON生成のために計算は必須ですが、途中経過のprintは最小限にします
+    try:
+        filter_domain_differences_with_mismatch(INPUT_FILE, DL4_FILTERED_FILE, DL_THRESHOLD)
+        append_typo_causes(DL4_FILTERED_FILE, CAUSES_CSV_FILE)
+    except FileNotFoundError:
+        print(f"[致命的エラー] 入力ファイル ({INPUT_FILE}) が見つかりません。")
+        exit()
+
+    # --------------------------------------------------------------------------
+    # 3. 分析の実行 (内部計算のみ)
+    # --------------------------------------------------------------------------
+    # 個別ミスの重み (W_individual) と位置別頻度の計算
     major_weights, individual_rank_weights = analyze_for_ranking(CAUSES_CSV_FILE)
-
-    # 新しい位置別頻度の計算 (DL=1のフィルタリングに使用)
     positional_freqs = calculate_positional_freqs(CAUSES_CSV_FILE)
     
-    # 総イベント数の取得
-    cause_ratios, cause_counts, total_events = get_cause_ratios(CAUSES_CSV_FILE)
+    # 総イベント数の取得 (正規化用)
+    _, _, total_events = get_cause_ratios(CAUSES_CSV_FILE)
+
+    # ★★★ ここにあった「原因別集計表示」「ヒートマップ表示」などは削除(非表示)しました ★★★
 
     # --------------------------------------------------------------------------
-    # 4. TLDミス、原因別集計、差分集計の表示
+    # 4. Web用データのエクスポート (JSON生成)
     # --------------------------------------------------------------------------
-
-    print("==============================================================================")
-    print("■ 原因別集計と割合（重み）:\n")
-    for cause in sorted(cause_counts, key=cause_counts.get, reverse=True):
-        count = cause_counts[cause]
-        ratio = cause_ratios[cause]
-        print(f"{cause:<25}: {count:>5}件 ({ratio:>5.3f})")
-    print()
-
-    print("==============================================================================")
-    analyze_ngram_differences(CAUSES_CSV_FILE)
-    print()
-
-    # ユーザー要求: ヒートマップ表示の追加
-    generate_positional_heatmap(positional_freqs, total_events)
-
-    # --------------------------------------------------------------------------
-    # 5. Web用データのエクスポート (JSON変換を適用)
-    # --------------------------------------------------------------------------
-    
     if not individual_rank_weights:
         print("\n[エラー] 重みデータが計算されなかったため、JSONエクスポートをスキップします。")
     else:
@@ -923,32 +950,34 @@ if __name__ == "__main__":
         converted_individual_weights = convert_internal_keys_to_str(individual_rank_weights)
         converted_positional_freqs = convert_positional_freqs_to_json(positional_freqs)
 
-        # DL=1の全イベント数を計算 (JavaScriptでの正規化に必要)
+        # DL=1の全イベント数を計算
         total_dl1_count = sum(sum(c.values()) for char_data in positional_freqs.values() for c in char_data.values())
         if total_dl1_count == 0: total_dl1_count = 1
 
-        OUTPUT_JSON_FILE = "data.json"
+        # TLD価格を外部ファイルからロード
+        try:
+            with open(TLD_PRICES_FILE, 'r', encoding='utf-8') as f:
+                TLD_COSTS = json.load(f)
+            # print(f"[INFO] TLD価格リストを読み込みました: {len(TLD_COSTS)}件") # 邪魔ならコメントアウト
+        except FileNotFoundError:
+            print("[WARN] tld_prices.json が見つかりません。デフォルト値を使用します。")
+            TLD_COSTS = {
+                ".co.jp": "7,678円/年", ".jp": "3,124円/年",
+                ".com": "1,408円/年", ".net": "1,628円/年"
+            }
         
-        # TLD_COSTS の定義は Python コードに存在するものを使用
-        TLD_COSTS = {
-            ".co.jp": "7,678円/年", 
-            ".jp": "3,124円/年",
-            ".com": "1,408円/年",
-            ".net": "1,628円/年",
-            ".co.jo": "費用不明 (未登録TLD/要確認)", 
-        }
-        
-        # HOMOGLYPHS_FOR_GENERATOR も Python コードに存在するものを再定義
-        HOMOGLYPHS_FOR_GENERATOR = {'1': ['l'], '0': ['o'], 'i': ['l'], 'l': ['i'], 'r': ['m'], 'b': ['d'], 'd': ['b']} 
+        # ホモグリフ定義 (Python側)
+        HOMOGLYPHS_FOR_GENERATOR = {
+            '1': ['l'], 'l': ['1', 'i'], '0': ['o'], 'o': ['0'], 
+            'i': ['l'], 'r': ['m'], 'b': ['d'], 'd': ['b']
+        } 
         
         web_data_export = {
             "individual_weights": converted_individual_weights, 
-            "positional_freqs": converted_positional_freqs, # 新規追加
-            "total_dl1_count": total_dl1_count, # 新規追加
-            "K_POSITION_BOOST": 0.5, # 定数をJS側にも共有
-            "TLD_COSTS": TLD_COSTS, # 新規追加
-            
-            # 予測生成に必要な定数
+            "positional_freqs": converted_positional_freqs,
+            "total_dl1_count": total_dl1_count,
+            "K_POSITION_BOOST": 0.5,
+            "TLD_COSTS": TLD_COSTS,
             "keyboard_adjacent": keyboard_adjacent,
             "symmetric_key_pairs": [list(pair) for pair in symmetric_key_pairs],
             "homoglyphs_for_generator": HOMOGLYPHS_FOR_GENERATOR
@@ -957,37 +986,43 @@ if __name__ == "__main__":
         try:
             with open(OUTPUT_JSON_FILE, 'w', encoding='utf-8') as f:
                 json.dump(web_data_export, f, indent=4, ensure_ascii=False)
-            print(f"\n[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
+            print(f"[INFO] Web用データのエクスポート完了: {OUTPUT_JSON_FILE}")
         except Exception as e:
             print(f"\n[ERROR] JSONエクスポート中にエラーが発生しました: {e}")
 
     # --------------------------------------------------------------------------
-    # 6. ドメインランキング生成の実行
+    # 5. ドメインランキング生成の実行 (ユーザーへの出力)
     # --------------------------------------------------------------------------
     
-    correct_domain = input("\n 入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
+    # ユーザー入力を受け付ける
+    correct_domain = input("\n入力されたドメインのタイポドメイン候補を生成する（例: treasurefactory.co.jp）: ").strip()
     
-    if major_weights and individual_rank_weights:
+    if major_weights and individual_rank_weights and correct_domain:
         print("\n" + "=" * 78)
         print(f"'{correct_domain}' に対する予測タイポドメインランキング:\n")
         
-        # typo_generator_ranked 関数に、計算した個別ミス重み (individual_rank_weights) を渡す
-        # すべての引数をキーワードで指定し、順序依存性をなくす（より安全）
         predicted_typos = typo_generator_ranked(
             domain=correct_domain,
-            individual_weights=individual_rank_weights, # 新しいスコアの主軸となる個別重み
-            positional_freqs=positional_freqs, # 位置別頻度データ
+            individual_weights=individual_rank_weights,
+            positional_freqs=positional_freqs,
             top_n=20
         )
 
-        # コストを取得して出力に追加
+        # コスト判定用のソート済みキー
+        sorted_tlds = sorted(TLD_COSTS.keys(), key=len, reverse=True)
+
         for i, r in enumerate(predicted_typos):
-            cost_estimate = extract_tld_and_cost(r['typo']) # コスト推定関数を呼び出し
+            # コスト計算
+            cost_estimate = "費用不明"
+            for tld in sorted_tlds:
+                if r['typo'].endswith(tld):
+                    cost_estimate = TLD_COSTS[tld]
+                    break
             
-            # 出力フォーマットを修正し、コスト情報を追加
+            # 結果出力
             print(f"{i+1:2}位 {r['typo']:<30} (スコア: {r['score']:.7f}, 距離: {r['distance']}, 費用: {cost_estimate}, 原因: {r['causes']})")
+            
+        print("=" * 78 + "\n")
+
     else:
-        print("\n[エラー] 重みデータが計算されていないため、ランキング生成を実行できませんでした。")
-
-
-    
+        print("\n[終了] 重みデータがないか、ドメインが入力されませんでした。")
