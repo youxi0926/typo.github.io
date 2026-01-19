@@ -53,6 +53,6 @@ def filter_domain_differences_with_mismatch(input_path, output_path, threshold=5
 if __name__ == "__main__":
     filter_domain_differences_with_mismatch(
         input_path="filtered_address.csv",
-        output_path="filtered_domain_typos_dl2.csv",
-        threshold=2
+        output_path="filtered_domain_typos_dl7.csv",
+        threshold=7
     )
